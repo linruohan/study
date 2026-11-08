@@ -1,0 +1,55 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:study_app/archive/local_archive.dart';
+import 'package:study_app/knowledge/age_band.dart';
+import 'package:study_app/main.dart';
+import 'package:study_app/plan/local_plan_store.dart';
+import 'package:study_app/profile/local_profile.dart';
+
+void main() {
+  testWidgets('监护人记下对声音有反应，孩子的太阳还在', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(900, 1800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final dir = Directory.systemTemp.createTempSync('lumen_ui_');
+    final archive = LocalArchive(directory: dir);
+    final store = LocalProfile(directory: dir);
+    await store.save(const StudyProfile(band: AgeBand.toddler));
+    await tester.pumpWidget(
+      StudyApp(
+        archive: archive,
+        store: store,
+        planStore: LocalPlanStore(directory: dir),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 监护人入口在「我的」里。
+    await tester.tap(find.byIcon(Icons.person_outline));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('监护人记一条'));
+    await tester.pumpAndSettle();
+    expect(find.text('可以空着。空着不是落后。这是监护人的观察，不是孩子自己说的。'), findsOneWidget);
+    expect(find.text('记录还不够。'), findsOneWidget);
+
+    await tester.tap(find.text('对声音有反应'));
+    await tester.pumpAndSettle();
+    expect(find.text('记下了：对声音有反应'), findsOneWidget);
+    expect(find.text('依据是监护人观察「对声音有反应」。'), findsOneWidget);
+    expect(find.text('这不是教师、心理咨询师或医生的判断。'), findsOneWidget);
+    expect(find.text('记录还不够。'), findsNothing);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.text('本机记录 1 条'), findsOneWidget);
+
+    final loaded = await LocalArchive(directory: dir).load();
+    expect(loaded.records.single.source, '监护人观察');
+    dir.deleteSync(recursive: true);
+  });
+}

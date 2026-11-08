@@ -24,12 +24,12 @@ class LocalArchive {
     if (!file.existsSync()) {
       return const ArchiveFile(records: []);
     }
-    return ArchiveFile.parse(await file.readAsString());
+    return ArchiveFile.parse(file.readAsStringSync());
   }
 
   Future<void> save(ArchiveFile archive) async {
     final file = await _file();
-    await file.writeAsString(archive.toJsonString());
+    file.writeAsStringSync(archive.toJsonString());
   }
 
   Future<File> exportCopy() async {
@@ -42,13 +42,49 @@ class LocalArchive {
     final copy = File(
       '${dir.path}${Platform.pathSeparator}study_archive_$stamped.json',
     );
-    return source.copy(copy.path);
+    source.copySync(copy.path);
+    return copy;
   }
 
   Future<ArchiveFile> addPractice({
     required String subject,
     required String body,
     DateTime? at,
+    String? conceptId,
+    String? domainId,
+    String? ageBandId,
+  }) {
+    return addRecord(
+      source: '应用内练习',
+      subject: subject,
+      body: body,
+      at: at,
+      conceptId: conceptId,
+      domainId: domainId,
+      ageBandId: ageBandId,
+    );
+  }
+
+  Future<ArchiveFile> addObservation({
+    required String body,
+    DateTime? at,
+  }) {
+    return addRecord(
+      source: '监护人观察',
+      subject: '照护',
+      body: body,
+      at: at,
+    );
+  }
+
+  Future<ArchiveFile> addRecord({
+    required String source,
+    required String subject,
+    required String body,
+    DateTime? at,
+    String? conceptId,
+    String? domainId,
+    String? ageBandId,
   }) async {
     final current = await load();
     final now = at ?? DateTime.now();
@@ -56,9 +92,12 @@ class LocalArchive {
       LearningRecord(
         id: now.microsecondsSinceEpoch.toString(),
         at: now,
-        source: '应用内练习',
+        source: source,
         subject: subject,
         body: body,
+        conceptId: conceptId,
+        domainId: domainId,
+        ageBandId: ageBandId,
       ),
     );
     await save(next);

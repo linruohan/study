@@ -36,4 +36,33 @@ void main() {
     expect(copy.path, contains('study_archive_'));
     dir.deleteSync(recursive: true);
   });
+
+  test('监护人观察和练习写在同一份档案里', () async {
+    final dir = Directory.systemTemp.createTempSync('study_archive_');
+    final archive = LocalArchive(directory: dir);
+    await archive.addPractice(subject: '语', body: '指出太阳是「日」');
+    final saved = await archive.addObservation(body: '对声音有反应');
+    expect(saved.records, hasLength(2));
+    expect(saved.records.last.source, '监护人观察');
+    expect(saved.records.last.subject, '照护');
+    expect(saved.records.last.body, '对声音有反应');
+    dir.deleteSync(recursive: true);
+  });
+
+  test('带概念 id 的练习可以写入再读出', () async {
+    final dir = Directory.systemTemp.createTempSync('study_archive_');
+    final archive = LocalArchive(directory: dir);
+    await archive.addPractice(
+      subject: '语',
+      body: '指出太阳是「日」',
+      conceptId: 'zi_ri',
+      domainId: 'language',
+      ageBandId: 'toddler',
+    );
+    final loaded = await archive.load();
+    expect(loaded.records.single.conceptId, 'zi_ri');
+    expect(loaded.records.single.domainId, 'language');
+    expect(loaded.records.single.ageBandId, 'toddler');
+    dir.deleteSync(recursive: true);
+  });
 }
