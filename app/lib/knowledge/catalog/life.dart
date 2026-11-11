@@ -10,6 +10,7 @@ const lifeDomain = LearningDomain(
   name: '生活与安全',
   glyph: '安',
   color: Color(0xFF6F7A63),
+  categoryId: 'life',
   concepts: [
     Concept(
       id: 'fire_safety',

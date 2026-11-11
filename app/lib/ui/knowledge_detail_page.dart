@@ -5,17 +5,16 @@ import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
 import '../knowledge/domain.dart';
 import '../knowledge/knowledge_graph.dart';
+import '../knowledge/study_degree.dart';
 import '../learning/learner_state.dart';
 import '../plan/study_plan.dart';
-import 'concept_page.dart';
-import 'plan_editor_page.dart';
 import 'theme.dart';
 import 'widgets/glyph_badge.dart';
 
-/// 知识详情页（占位版）：详情内容还在打磨，先把两个去处留住。
+/// 知识详情页：知识简介，加入门、熟悉、精通三个程度的知识点。
 ///
-/// 这一页之后会补上「这一步讲什么、怎么练、前置是什么」；
-/// 现在先给学习者一条直路：直接学，或者排进计划。
+/// 每个程度 tab 里列出该程度的知识点；底部按当前看的程度
+/// 把这个知识加进「我的计划」。已经在计划里的程度不再重复添加。
 class KnowledgeDetailPage extends StatefulWidget {
   const KnowledgeDetailPage({
     super.key,
@@ -25,6 +24,8 @@ class KnowledgeDetailPage extends StatefulWidget {
     required this.domain,
     required this.concept,
     required this.learner,
+    required this.plans,
+    required this.onAddPlan,
   });
 
   final LocalArchive archive;
@@ -36,171 +37,194 @@ class KnowledgeDetailPage extends StatefulWidget {
   /// 进入时的学习者状态；学完一步后会重新读取档案。
   final LearnerState learner;
 
+  /// 本机全部计划，用来判断这个知识是否已在计划中。
+  final List<StudyPlan> plans;
+
+  /// 按当前程度加入计划；由首页写进计划簿。
+  final void Function(StudyPlan plan) onAddPlan;
+
   @override
   State<KnowledgeDetailPage> createState() => _KnowledgeDetailPageState();
 }
 
-class _KnowledgeDetailPageState extends State<KnowledgeDetailPage> {
-  late LearnerState _learner = widget.learner;
+class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
+    with SingleTickerProviderStateMixin {
+  /// 进入时的掌握状态；加入计划不改变它，所以可以直接 final。
+  late final LearnerState _learner = widget.learner;
 
-  /// 重新读档案，让学习程度跟着更新。
-  Future<void> _reload() async {
-    final archive = await widget.archive.load();
+  late final TabController _tabs = TabController(
+    length: StudyDegree.values.length,
+    vsync: this,
+  )..addListener(() {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+
+  /// 当前 tab 对应的学习程度。
+  StudyDegree get _degree => StudyDegree.values[_tabs.index];
+
+  /// 这个知识已经加进计划的程度。
+  Set<StudyDegree> get _plannedDegrees {
+    return {
+      for (final plan in widget.plans)
+        if (plan.conceptId == widget.concept.id && plan.degree != null)
+          plan.degree!,
+    };
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  /// 按当前程度把这个知识加进计划；已加过的程度给一句确认。
+  Future<void> _addToPlan() async {
+    final degree = _degree;
+    if (_plannedDegrees.contains(degree)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('这个知识已在计划里（${degree.label}）')),
+      );
+      return;
+    }
+    final now = DateTime.now();
+    widget.onAddPlan(
+      StudyPlan(
+        id: 'plan_${now.microsecondsSinceEpoch}',
+        domainId: widget.domain.id,
+        depth: PlanDepth.deep,
+        conceptId: widget.concept.id,
+        degree: degree,
+        startAt: now,
+        remind: false,
+      ),
+    );
     if (!mounted) {
       return;
     }
-    setState(() => _learner = LearnerState.fromRecords(archive.records));
-  }
-
-  /// 直接学这一步；回来刷新档位。
-  Future<void> _start() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ConceptPage(
-          archive: widget.archive,
-          band: widget.band,
-          domain: widget.domain,
-          concept: widget.concept,
-        ),
-      ),
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已加入计划 · ${degree.label}')),
     );
-    await _reload();
-  }
-
-  /// 加入学习计划：预选这个领域，保存后带着计划回到上一页。
-  Future<void> _addToPlan() async {
-    final plan = await Navigator.of(context).push<StudyPlan>(
-      MaterialPageRoute<StudyPlan>(
-        builder: (_) => PlanEditorPage(
-          graph: widget.graph,
-          band: widget.band,
-          initialDomainId: widget.domain.id,
-          initialDepth: PlanDepth.brief,
-        ),
-      ),
-    );
-    if (plan == null || !mounted) {
-      return;
-    }
-    Navigator.of(context).pop(plan);
   }
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
     final variant = widget.concept.variantFor(widget.band);
-    final tier = _learner.tierOf(widget.concept.id);
-    final practiceCount = _learner.practiceCount(widget.concept.id);
     return Scaffold(
       appBar: AppBar(
         title: Text(
           widget.band.showsSubjectNames ? widget.domain.name : '这一步',
         ),
+        bottom: TabBar(
+          controller: _tabs,
+          labelColor: paperOchre,
+          unselectedLabelColor: paperInkSoft,
+          indicatorColor: paperOchre,
+          tabs: [
+            for (final degree in StudyDegree.values) Tab(text: degree.label),
+          ],
+        ),
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+        child: TabBarView(
+          controller: _tabs,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                GlyphBadge(
-                  glyph: variant.glyph ?? widget.domain.glyph,
-                  color: widget.domain.color,
-                  size: 56,
-                  rounded: true,
-                  fontSize: 26,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(variant.topic, style: text.headlineSmall),
-                      if (variant.note != null) ...[
-                        const SizedBox(height: 6),
-                        Text(variant.note!, style: text.bodySmall),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                MasteryPill(label: '第 ${widget.concept.depth + 1} 层'),
-                MasteryPill(
-                  label: tier?.label ?? '未开始',
-                  color: tier == null ? paperStone : paperOchre,
-                ),
-                if (practiceCount > 0)
-                  MasteryPill(
-                    label: '练过 $practiceCount 次',
-                    color: paperInkSoft,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            _placeholderCard(context),
-            const SizedBox(height: 20),
-            FilledButton(
-              key: const Key('start_concept'),
-              onPressed: _start,
-              child: const Text('开始学这一步'),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton(
-              key: const Key('add_to_plan'),
-              onPressed: _addToPlan,
-              child: const Text('加入学习计划'),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '加入后会在「规划」里按时间提醒你。',
-              textAlign: TextAlign.center,
-              style: text.bodySmall,
-            ),
+            for (final degree in StudyDegree.values)
+              _degreeTab(context, degree, variant),
           ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+          child: FilledButton(
+            key: const Key('add_to_plan'),
+            onPressed: _addToPlan,
+            child: Text('把「${_degree.label}」加入我的计划'),
+          ),
         ),
       ),
     );
   }
 
-  /// 占位说明：告诉学习者这页之后会有什么，现在能先做什么。
-  Widget _placeholderCard(BuildContext context) {
+  /// 一个程度 tab：顶部掌握状态，中间知识点列表。
+  Widget _degreeTab(
+    BuildContext context,
+    StudyDegree degree,
+    ConceptVariant variant,
+  ) {
     final text = Theme.of(context).textTheme;
-    return PaperCard(
-      color: paperOchre.withValues(alpha: 0.04),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.auto_stories_outlined,
-                size: 20,
-                color: paperInkSoft,
+    final tier = _learner.tierOf(widget.concept.id);
+    final practiceCount = _learner.practiceCount(widget.concept.id);
+    final planned = _plannedDegrees.contains(degree);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GlyphBadge(
+              glyph: variant.glyph ?? widget.domain.glyph,
+              color: widget.domain.color,
+              size: 56,
+              rounded: true,
+              fontSize: 26,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(variant.topic, style: text.headlineSmall),
+                  const SizedBox(height: 6),
+                  Text(variant.note ?? variant.doing, style: text.bodySmall),
+                ],
               ),
-              const SizedBox(width: 8),
-              Text('详情还在写', style: text.titleMedium),
-            ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            MasteryPill(label: '第 ${widget.concept.depth + 1} 层', color: paperStone),
+            MasteryPill(
+              label: tier?.label ?? '未开始',
+              color: tier == null ? paperInkSoft : paperOchre,
+            ),
+            if (practiceCount > 0)
+              MasteryPill(label: '练过 $practiceCount 次', color: paperInkSoft),
+            if (planned) MasteryPill(label: '已在计划', color: paperStone),
+          ],
+        ),
+        const SizedBox(height: 18),
+        Text('「${degree.label}」要学的知识点', style: text.titleMedium),
+        const SizedBox(height: 10),
+        for (final point in variant.pointsFor(degree)) ...[
+          PaperCard(
+            key: Key('point_${degree.name}_${variant.pointsFor(degree).indexOf(point)}'),            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.check_circle_outline,
+                    size: 20, color: paperOchre),
+                const SizedBox(width: 10),
+                Expanded(child: Text(point, style: text.bodyMedium)),
+              ],
+            ),
           ),
           const SizedBox(height: 10),
-          Text(
-            '这里之后会放：这一步讲什么、怎么练、需要先会什么，'
-            '以及同一个概念在别的年龄档怎么说。',
-            style: text.bodyMedium,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '现在可以直接开始，或者先把它排进计划。',
-            style: text.bodySmall,
-          ),
         ],
-      ),
+        const SizedBox(height: 8),
+        Text(
+          '加入计划后，在「规划」页按领域分组学习这些知识点。',
+          textAlign: TextAlign.center,
+          style: text.bodySmall,
+        ),
+      ],
     );
   }
 }

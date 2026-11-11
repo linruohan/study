@@ -56,8 +56,8 @@ class _HomePageState extends State<HomePage> {
   var _recordCount = 0;
   var _tab = 0;
 
-  /// 知识库停在哪个程度标签，返回详情后保持不动。
-  var _libraryTab = 0;
+  /// 知识库停在树的哪个节点（类 id 或领域 id），返回后保持不动。
+  String? _librarySelection;
 
   String? _exportPath;
 
@@ -114,15 +114,15 @@ class _HomePageState extends State<HomePage> {
     await _reload();
   }
 
-  /// 打开一条知识的详情；在详情里加入计划后，带回计划并切到「规划」。
+  /// 打开一条知识的详情；在详情里按程度加入计划后写进计划簿。
   Future<void> _openKnowledge(Concept concept, LearningDomain domain) async {
     final band = _profile.band;
     final learner = _learner;
     if (band == null || learner == null) {
       return;
     }
-    final plan = await Navigator.of(context).push<StudyPlan>(
-      MaterialPageRoute<StudyPlan>(
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
         builder: (_) => KnowledgeDetailPage(
           archive: widget.archive,
           graph: widget.graph,
@@ -130,21 +130,19 @@ class _HomePageState extends State<HomePage> {
           domain: domain,
           concept: concept,
           learner: learner,
+          plans: _book.plans,
+          onAddPlan: (plan) {
+            _book.add(plan);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('已加入计划 · ${plan.degree?.label ?? ''}')),
+              );
+            }
+          },
         ),
       ),
     );
     await _reload();
-    if (plan == null || !mounted) {
-      return;
-    }
-    await _book.add(plan);
-    if (!mounted) {
-      return;
-    }
-    setState(() => _tab = 0);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已加入规划 · ${plan.depth.label}')),
-    );
   }
 
   /// 换年龄档：年龄选择页保存后回来重读设置。
@@ -254,31 +252,8 @@ class _HomePageState extends State<HomePage> {
     await _book.add(plan);
   }
 
-  /// 删除一条计划前再确认一次，避免误触。
+  /// 删除一条知识计划；规划页的卡片菜单用。
   Future<void> _deletePlan(StudyPlan plan) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('删除这条计划？'),
-        content: Text(
-          '${widget.graph.domainById(plan.domainId)?.name ?? '学习'} · '
-          '${plan.depth.label}',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('留着'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) {
-      return;
-    }
     await _book.remove(plan);
   }
 
@@ -289,8 +264,11 @@ class _HomePageState extends State<HomePage> {
           graph: widget.graph,
           band: band,
           learner: learner,
-          tab: _libraryTab,
-          onSelectTab: (index) => setState(() => _libraryTab = index),
+          selection: _librarySelection,
+          onSelectCategory: (category) =>
+              setState(() => _librarySelection = category.id),
+          onSelectDomain: (domain) =>
+              setState(() => _librarySelection = domain.id),
           onOpen: _openKnowledge,
         ),
       2 => LearnView(
@@ -323,18 +301,13 @@ class _HomePageState extends State<HomePage> {
           onExport: _export,
         ),
       _ => PlanView(
+          archive: widget.archive,
           graph: widget.graph,
           band: band,
+          learner: learner,
           plans: _book.plans,
-          onAdd: _addPlan,
-          onOpen: (plan) {
-            final domain = widget.graph.domainById(plan.domainId);
-            if (domain != null) {
-              _openPlan(plan, domain);
-            }
-          },
-          onToggleDone: (plan) => _book.toggleDone(plan),
-          onDelete: _deletePlan,
+          onDeleted: _deletePlan,
+          onReload: _reload,
         ),
     };
   }

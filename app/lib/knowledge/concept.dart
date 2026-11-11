@@ -1,4 +1,5 @@
 import 'age_band.dart';
+import 'study_degree.dart';
 
 /// 同一概念在某一档年龄的呈现。
 ///
@@ -13,6 +14,7 @@ class ConceptVariant {
     required this.answer,
     this.glyph,
     this.note,
+    this.points,
   });
 
   /// 这一档学什么，例如「看见火要远离」。
@@ -35,6 +37,29 @@ class ConceptVariant {
 
   /// 给本人或监护人的一句说明，可空。
   final String? note;
+
+  /// 按学习程度显式编写的知识点；没有写入的程度走默认派生。
+  final Map<StudyDegree, List<String>>? points;
+
+  /// 某一学习程度下的知识点列表。
+  ///
+  /// 显式写入了 [points] 就用显式数据；否则按这句知识的字段派生：
+  /// 入门 = 是什么、做什么；熟悉 = 想一想、参考回应；
+  /// 精通 = 我能……、一句说明。三个程度互不重复。
+  List<String> pointsFor(StudyDegree degree) {
+    final explicit = points?[degree];
+    if (explicit != null && explicit.isNotEmpty) {
+      return List.unmodifiable(explicit);
+    }
+    return switch (degree) {
+      StudyDegree.beginner => [topic, doing],
+      StudyDegree.familiar => [check, answer],
+      StudyDegree.advanced => [
+          praise,
+          if (note != null) note!,
+        ],
+    };
+  }
 }
 
 /// 原子概念：可学习的最小单元，带前置依赖和跨年龄分级。

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'age_band.dart';
 import 'concept.dart';
+import 'taxonomy.dart';
 
 /// 学习领域：一组按深浅排序的概念，相当于文档里的「领域适配器」。
 ///
@@ -14,6 +15,7 @@ class LearningDomain {
     required this.glyph,
     required this.color,
     required this.concepts,
+    required this.categoryId,
   });
 
   /// 稳定标识，写进本机档案。
@@ -30,6 +32,13 @@ class LearningDomain {
 
   /// 本领域的全部概念，允许跨多个年龄档。
   final List<Concept> concepts;
+
+  /// 所属九类分类的 id，对应 [taxonomy.dart] 里的类别。
+  final String categoryId;
+
+  /// 本领域属于哪一类；id 未知时落回第一类，避免界面崩。
+  ScholarCategory get category =>
+      ScholarCategory.fromId(categoryId) ?? nineCategories.first;
 
   /// 本档可见的概念，从浅到深排序；同一层按 id 稳定排序。
   List<Concept> conceptsFor(AgeBand band) {

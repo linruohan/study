@@ -1,3 +1,5 @@
+import '../knowledge/study_degree.dart';
+
 /// 学习计划的方向：先简单了解，还是走完整条阶梯深入学习。
 enum PlanDepth {
   brief('简单了解', '先看最浅的一两步，知道它是什么。'),
@@ -30,7 +32,13 @@ enum PlanDepth {
   }
 }
 
-/// 一条本机学习计划：在某个时间，学某个领域的某个深度。
+/// 一条本机学习计划。
+///
+/// 两种形态并存：
+/// - 领域级计划（[conceptId] 为 null）：在某个时间学某个领域，走阶梯，
+///   到点提醒、完成后标 done，与旧版一致。
+/// - 知识级计划（[conceptId] 不为 null）：从知识详情页按学习程度加入，
+///   在「规划」页按领域分组列出，点开进入该程度的知识点学习页。
 ///
 /// 计划只存在本机，不上传；到点提醒只在应用打开时出现。
 class StudyPlan {
@@ -39,6 +47,8 @@ class StudyPlan {
     required this.domainId,
     required this.depth,
     required this.startAt,
+    this.conceptId,
+    this.degree,
     this.remind = true,
     this.done = false,
     this.remindedAt,
@@ -51,8 +61,14 @@ class StudyPlan {
   /// 要学的领域 id。
   final String domainId;
 
-  /// 简单了解或深入学习。
+  /// 简单了解或深入学习；知识级计划用它记录加入时的方向。
   final PlanDepth depth;
+
+  /// 知识级计划对应的概念 id；领域级计划为 null。
+  final String? conceptId;
+
+  /// 知识级计划加入时的学习程度；领域级计划为 null。
+  final StudyDegree? degree;
 
   /// 计划开始的时间。
   final DateTime startAt;
@@ -68,6 +84,9 @@ class StudyPlan {
 
   /// 点了「稍后」之后的新提醒时间；到这之前不再弹。
   final DateTime? snoozedUntil;
+
+  /// 是否为知识级计划。
+  bool get isConceptPlan => conceptId != null;
 
   /// 到时间没有；用于列表状态与提醒判断。
   bool due(DateTime now) => !startAt.isAfter(now);
@@ -85,6 +104,8 @@ class StudyPlan {
       id: id,
       domainId: domainId,
       depth: depth ?? this.depth,
+      conceptId: conceptId,
+      degree: degree,
       startAt: startAt ?? this.startAt,
       remind: remind ?? this.remind,
       done: done ?? this.done,
@@ -99,6 +120,8 @@ class StudyPlan {
       'domainId': domainId,
       'depth': depth.name,
       'startAt': startAt.toIso8601String(),
+      if (conceptId != null) 'conceptId': conceptId,
+      if (degree != null) 'degree': degree!.name,
       'remind': remind,
       'done': done,
       if (remindedAt != null) 'remindedAt': remindedAt!.toIso8601String(),
@@ -121,6 +144,8 @@ class StudyPlan {
       id: id,
       domainId: domainId,
       depth: depth,
+      conceptId: json['conceptId'] as String?,
+      degree: StudyDegree.fromName(json['degree'] as String?),
       startAt: startAt,
       remind: json['remind'] as bool? ?? true,
       done: json['done'] as bool? ?? false,

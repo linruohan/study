@@ -10,6 +10,7 @@ const mathDomain = LearningDomain(
   name: '数',
   glyph: '数',
   color: Color(0xFF3E6F8C),
+  categoryId: 'cosmos',
   concepts: [
     Concept(
       id: 'count_objects',

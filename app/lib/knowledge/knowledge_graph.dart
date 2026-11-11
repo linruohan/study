@@ -4,6 +4,7 @@ import 'catalog/life.dart';
 import 'catalog/math.dart';
 import 'concept.dart';
 import 'domain.dart';
+import 'taxonomy.dart';
 
 /// 本机知识图谱：替代服务端的图谱中台，只保存这一台设备够用的关系与查询。
 ///
@@ -23,6 +24,35 @@ class KnowledgeGraph {
   /// 本档有内容的领域。
   List<LearningDomain> domainsFor(AgeBand band) {
     return domains.where((domain) => domain.hasContent(band)).toList();
+  }
+
+  /// 九类分类在本档的视图：有内容的领域挂在各自的类别下。
+  ///
+  /// 类别顺序固定为九类的注册顺序；没有内容的类别仍然出现，
+  /// 让树的形状稳定，界面上给「还没有知识」的空态。
+  List<({ScholarCategory category, List<LearningDomain> domains})>
+      categoriesFor(AgeBand band) {
+    final grouped = <ScholarCategory, List<LearningDomain>>{};
+    for (final domain in domainsFor(band)) {
+      grouped.putIfAbsent(domain.category, () => []).add(domain);
+    }
+    return [
+      for (final category in nineCategories)
+        (
+          category: category,
+          domains: grouped[category] ?? const [],
+        ),
+    ];
+  }
+
+  /// 某一类别下本档有内容的领域。
+  List<LearningDomain> domainsInCategory(
+    ScholarCategory category,
+    AgeBand band,
+  ) {
+    return domainsFor(band)
+        .where((domain) => domain.category.id == category.id)
+        .toList();
   }
 
   /// 按 id 找领域，找不到返回 null。

@@ -10,6 +10,7 @@ const languageDomain = LearningDomain(
   name: '语',
   glyph: '字',
   color: Color(0xFF8C4A2F),
+  categoryId: 'education',
   concepts: [
     Concept(
       id: 'zi_ri',

@@ -36,9 +36,8 @@ CI 目前自动构建 Android APK 与 Windows 包并上传 artifact；iOS/Linux 
 ```
 study/
 ├── app/        Flutter 客户端（本机学习档案 + 幼儿触摸路线）
-├── server/     素材服务（Fastify + PostgreSQL + MinIO）
-├── doc/        分龄学习材料与设计文档（按年龄目录组织）
-├── design.md   产品设计：学习目标、设计理念、共同约定、动画与价值
+├── server/     素材服务（Fastify + PostgreSQL + S3 兼容对象存储）
+├── doc/        分龄学习材料与设计文档（design.md、数据库使用说明.md 等）
 └── .github/workflows/   Flutter CI / 构建 / 发布
 ```
 
@@ -50,7 +49,7 @@ study/
 | [doc/大学](doc/大学/目录.md) | 18–20 岁：通识、专业和一项做完的项目 |
 | [doc/社会](doc/社会/目录.md) | 离开学校以后：公共文本、健康与科学，用在生活里 |
 
-年龄档总览见 [doc/readme.md](doc/readme.md)，设计全文见 [design.md](design.md)，开发进展记在 [doc/进展.md](doc/进展.md)。
+年龄档总览见 [doc/readme.md](doc/readme.md)，设计全文见 [doc/design.md](doc/design.md)，数据库用法见 [doc/数据库使用说明.md](doc/数据库使用说明.md)，开发进展记在 [doc/进展.md](doc/进展.md)。
 
 ## 客户端 app/
 
@@ -164,4 +163,4 @@ npm start            # 运行 dist/index.js
 - **一个年龄一套学法**：3–5 岁用触摸和语音，6 岁起文字菜单分科学习，12 岁起学概念与出处。
 - **没有连胜、排行榜、课内购买和广告**；答错说明错在哪，并给一次改的机会。
 
-完整理念、三对张力与动画约定见 [design.md](design.md)。
+完整理念、三对张力与动画约定见 [doc/design.md](doc/design.md)。
