@@ -6,6 +6,10 @@ import '../learning/achievements.dart';
 import '../learning/learner_state.dart';
 import '../plan/study_plan.dart';
 import 'theme.dart';
+import 'widgets/glyph_badge.dart';
+import 'widgets/page_header.dart';
+import 'widgets/section_header.dart';
+import 'widgets/setting_row.dart';
 
 /// 我的入口：等级、徽章和设置。
 class ProfileView extends StatelessWidget {
@@ -46,17 +50,19 @@ class ProfileView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
       children: [
-        Text('我的', style: text.titleMedium),
-        const SizedBox(height: 6),
-        Text('等级看的是每个领域学到多深；徽章看的是走过哪些路。',
-            style: text.bodySmall),
+        const PageHeader(
+          title: '我的',
+          subtitle: '等级看的是每个领域学到多深；徽章看的是走过哪些路。',
+        ),
         const SizedBox(height: 16),
         _identityCard(context, earned, achievements.length),
         const SizedBox(height: 22),
-        Text('等级', style: text.titleMedium),
+        const SectionHeader(title: '等级'),
         const SizedBox(height: 6),
-        Text('把一格练到熟练，就往上升一级。整个领域都到掌握，是专家级。',
-            style: text.bodySmall),
+        Text(
+          '把一格练到熟练，就往上升一级。整个领域都到掌握，是专家级。',
+          style: text.bodySmall,
+        ),
         const SizedBox(height: 12),
         if (standings.isEmpty)
           PaperCard(child: Text('这一档还没有内容。', style: text.bodyMedium))
@@ -66,12 +72,9 @@ class ProfileView extends StatelessWidget {
             const SizedBox(height: 10),
           ],
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Text('徽章', style: text.titleMedium),
-            const Spacer(),
-            Text('$earned/${achievements.length}', style: text.bodySmall),
-          ],
+        SectionHeader(
+          title: '徽章',
+          trailing: Text('$earned/${achievements.length}', style: text.bodySmall),
         ),
         const SizedBox(height: 6),
         Text('没达成的也会写清条件，知道下一步往哪走。', style: text.bodySmall),
@@ -86,17 +89,17 @@ class ProfileView extends StatelessWidget {
             crossAxisSpacing: 10,
             childAspectRatio: 1.5,
           ),
-          itemBuilder: (context, index) => _badgeCard(context, achievements[index]),
+          itemBuilder: (context, index) =>
+              _badgeCard(context, achievements[index]),
         ),
         const SizedBox(height: 22),
-        Text('设置', style: text.titleMedium),
+        const SectionHeader(title: '设置'),
         const SizedBox(height: 12),
         PaperCard(
           padding: EdgeInsets.zero,
           child: Column(
             children: [
-              _settingRow(
-                context,
+              SettingRow(
                 key: const Key('profile_change_band'),
                 icon: Icons.swap_horiz,
                 title: '换年龄档',
@@ -104,8 +107,7 @@ class ProfileView extends StatelessWidget {
                 onTap: onChangeBand,
               ),
               const Divider(),
-              _settingRow(
-                context,
+              SettingRow(
                 key: const Key('profile_guardian'),
                 icon: Icons.visibility_outlined,
                 title: '监护人记一条',
@@ -113,8 +115,7 @@ class ProfileView extends StatelessWidget {
                 onTap: onGuardian,
               ),
               const Divider(),
-              _settingRow(
-                context,
+              SettingRow(
                 key: const Key('profile_export'),
                 icon: Icons.download_outlined,
                 title: '导出档案到本机',
@@ -138,16 +139,11 @@ class ProfileView extends StatelessWidget {
     return PaperCard(
       child: Row(
         children: [
-          Container(
-            width: 58,
-            height: 58,
-            decoration: BoxDecoration(
-              color: paperOchre.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: const Center(
-              child: Icon(Icons.account_circle_outlined, color: paperOchre, size: 28),
-            ),
+          GlyphBadge(
+            icon: Icons.account_circle_outlined,
+            color: paperOchre,
+            size: 58,
+            fontSize: 28,
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -158,8 +154,10 @@ class ProfileView extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(band.howToLearn, style: text.bodySmall),
                 const SizedBox(height: 6),
-                Text('记录 $recordCount 条 · 徽章 $earned/$total',
-                    style: text.bodySmall),
+                Text(
+                  '记录 $recordCount 条 · 徽章 $earned/$total',
+                  style: text.bodySmall,
+                ),
               ],
             ),
           ),
@@ -178,19 +176,11 @@ class ProfileView extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Row(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: domain.color.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                domain.glyph,
-                style: TextStyle(fontSize: 20, color: domain.color),
-              ),
-            ),
+          GlyphBadge(
+            glyph: domain.glyph,
+            color: domain.color,
+            size: 44,
+            fontSize: 20,
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -242,22 +232,13 @@ class ProfileView extends StatelessWidget {
           : paperSurface,
       child: Row(
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: achievement.earned ? 0.14 : 0.06),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Icon(
-                achievement.earned
-                    ? Icons.workspace_premium
-                    : Icons.lock_outline,
-                color: color,
-                size: 20,
-              ),
-            ),
+          GlyphBadge(
+            icon: achievement.earned
+                ? Icons.workspace_premium
+                : Icons.lock_outline,
+            color: color,
+            size: 38,
+            fontSize: 20,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -298,7 +279,6 @@ class ProfileView extends StatelessWidget {
         final text = Theme.of(dialogContext).textTheme;
         return AlertDialog(
           key: const Key('badge_dialog'),
-          backgroundColor: paperSurface,
           title: Row(
             children: [
               Icon(
@@ -336,47 +316,6 @@ class ProfileView extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-
-  /// 设置里的一行，点整行触发。
-  Widget _settingRow(
-    BuildContext context, {
-    required Key key,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    final text = Theme.of(context).textTheme;
-    return InkWell(
-      key: key,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Row(
-          children: [
-            Icon(icon, color: paperInkSoft, size: 22),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: text.titleMedium),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: text.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right, color: paperInkSoft, size: 20),
-          ],
-        ),
-      ),
     );
   }
 }

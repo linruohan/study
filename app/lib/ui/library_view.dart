@@ -6,6 +6,9 @@ import '../knowledge/domain.dart';
 import '../knowledge/knowledge_graph.dart';
 import '../learning/learner_state.dart';
 import 'theme.dart';
+import 'widgets/empty_state.dart';
+import 'widgets/glyph_badge.dart';
+import 'widgets/page_header.dart';
 
 /// 知识库入口：按学习程度分三个标签，标签内再按领域分组。
 ///
@@ -106,16 +109,13 @@ class LibraryView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
     final sections = _sections();
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
       children: [
-        Text('知识库', style: text.titleMedium),
-        const SizedBox(height: 6),
-        Text(
-          '按学习的程度收在一起。点一条，看它讲什么，也可以加入学习计划。',
-          style: text.bodySmall,
+        const PageHeader(
+          title: '知识库',
+          subtitle: '按学习的程度收在一起。点一条，看它讲什么，也可以加入学习计划。',
         ),
         const SizedBox(height: 16),
         Row(
@@ -128,7 +128,13 @@ class LibraryView extends StatelessWidget {
         ),
         const SizedBox(height: 18),
         if (sections.isEmpty)
-          _empty(context)
+          EmptyState(
+            icon: Icons.menu_book_outlined,
+            title: '这一组还没有知识',
+            message: tab == 0
+                ? '这一档的知识都已经开始学了。'
+                : (tab == 1 ? '先在「未开始」里挑一条试试。' : '把一两条练到熟练，就会收到这里。'),
+          )
         else
           for (final section in sections) ...[
             _sectionHeader(context, section.domain, section.concepts.length),
@@ -179,19 +185,11 @@ class LibraryView extends StatelessWidget {
     final ready = graph.readyCount(domain, band, learner.readyIds);
     return Row(
       children: [
-        Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: domain.color.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-          ),
-          child: Center(
-            child: Text(
-              domain.glyph,
-              style: TextStyle(fontSize: 14, color: domain.color),
-            ),
-          ),
+        GlyphBadge(
+          glyph: domain.glyph,
+          color: domain.color,
+          size: 28,
+          fontSize: 14,
         ),
         const SizedBox(width: 10),
         Text(
@@ -228,19 +226,12 @@ class LibraryView extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       child: Row(
         children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: domain.color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Text(
-                variant.glyph ?? domain.glyph,
-                style: TextStyle(fontSize: 22, color: domain.color),
-              ),
-            ),
+          GlyphBadge(
+            glyph: variant.glyph ?? domain.glyph,
+            color: domain.color,
+            size: 46,
+            rounded: true,
+            fontSize: 22,
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -266,29 +257,6 @@ class LibraryView extends StatelessWidget {
                 : (tier == null
                     ? paperInkSoft
                     : (tier.unlocksNext ? paperOchre : paperInkSoft)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 某个标签下没有知识时的提示。
-  Widget _empty(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    return PaperCard(
-      padding: const EdgeInsets.fromLTRB(20, 28, 20, 28),
-      child: Column(
-        children: [
-          const Icon(Icons.menu_book_outlined, size: 34, color: paperInkSoft),
-          const SizedBox(height: 12),
-          Text('这一组还没有知识', style: text.titleMedium),
-          const SizedBox(height: 6),
-          Text(
-            tab == 0
-                ? '这一档的知识都已经开始学了。'
-                : (tab == 1 ? '先在「未开始」里挑一条试试。' : '把一两条练到熟练，就会收到这里。'),
-            textAlign: TextAlign.center,
-            style: text.bodySmall,
           ),
         ],
       ),

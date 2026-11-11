@@ -9,7 +9,7 @@ import '../learning/ladder.dart';
 import '../learning/learner_state.dart';
 import 'concept_page.dart';
 import 'ladder_list.dart';
-import 'theme.dart';
+import 'widgets/page_header.dart';
 
 /// 一个领域的完整阶梯：从浅到深，点开一格就学。
 class DomainPage extends StatefulWidget {
@@ -88,7 +88,6 @@ class _DomainPageState extends State<DomainPage> {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
     final learner = _learner;
     return Scaffold(
       appBar: AppBar(
@@ -103,13 +102,11 @@ class _DomainPageState extends State<DomainPage> {
             widget.onFinish == null ? 32 : 110,
           ),
           children: [
-            Text('从浅到深', style: text.titleMedium),
-            const SizedBox(height: 6),
-            Text(
-              widget.maxDepth == null
+            PageHeader(
+              title: '从浅到深',
+              subtitle: widget.maxDepth == null
                   ? '先学前一项。熟练一格，下一格才打开。'
                   : '简单了解：只看最浅的一两格。熟练一格，下一格才打开。',
-              style: text.bodySmall,
             ),
             const SizedBox(height: 16),
             if (learner != null)
@@ -135,13 +132,6 @@ class _DomainPageState extends State<DomainPage> {
         child: FilledButton(
           key: const Key('finish_learning'),
           onPressed: widget.onFinish,
-          style: FilledButton.styleFrom(
-            backgroundColor: paperOchre,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
           child: const Text('学完了，去做小测'),
         ),
       ),

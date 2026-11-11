@@ -70,9 +70,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 计划放在「学习」入口里，用底部图标进入。
-    await tester.tap(find.byIcon(Icons.school_outlined));
-    await tester.pumpAndSettle();
+    // 计划放在「规划」入口里，默认就停在这一页。
     expect(find.text('还没有学习计划'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('add_plan')));

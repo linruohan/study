@@ -104,6 +104,29 @@ ThemeData buildPaperTheme() {
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(foregroundColor: paperOchre),
     ),
+    // 主按钮统一成赭石圆角长条，页面里不再各写一份样式。
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: paperOchre,
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: paperLine,
+        disabledForegroundColor: paperInkSoft,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: const TextStyle(fontSize: 15, letterSpacing: 0.8),
+      ),
+    ),
+    // 弹窗与提示条也用纸面，避免跳出白色系统面板。
+    dialogTheme: DialogThemeData(
+      backgroundColor: paperSurface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    ),
+    snackBarTheme: const SnackBarThemeData(
+      backgroundColor: paperInk,
+      contentTextStyle: TextStyle(color: Colors.white, fontSize: 14),
+      behavior: SnackBarBehavior.floating,
+    ),
   );
 }
 

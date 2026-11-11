@@ -1,0 +1,26 @@
+name: Flutter CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/**'
+  pull_request:
+    paths:
+      - 'app/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 复用构建工作流，避免三个文件里重复维护同样步骤
+  build:
+    name: 构建
+    uses: ./.github/workflows/flutter-build.yml

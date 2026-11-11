@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../app_brand.dart';
@@ -11,6 +9,7 @@ import '../knowledge/domain.dart';
 import '../knowledge/knowledge_graph.dart';
 import '../learning/learner_state.dart';
 import '../plan/local_plan_store.dart';
+import '../plan/plan_book.dart';
 import '../plan/study_plan.dart';
 import '../profile/local_profile.dart';
 import 'age_setup_page.dart';
@@ -20,14 +19,16 @@ import 'knowledge_detail_page.dart';
 import 'learn_view.dart';
 import 'library_view.dart';
 import 'plan_editor_page.dart';
+import 'plan_view.dart';
 import 'profile_view.dart';
 import 'review_page.dart';
 import 'theme.dart';
+import 'widgets/plan_reminder.dart';
 
-/// 首页：知识库、学习、我的三个入口。
+/// 首页：规划、知识库、学习、我的四个入口。
 ///
-/// 知识库按程度和领域看全部知识；学习放今日一步与已排计划；
-/// 我的放等级、徽章和设置。
+/// 规划管什么时候学什么；知识库按程度和领域看全部知识；
+/// 学习只放今日一步和下一条计划；我的放等级、徽章和设置。
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
@@ -50,6 +51,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late StudyProfile _profile = widget.profile;
+  late final PlanBook _book = PlanBook(widget.planStore);
   LearnerState? _learner;
   var _recordCount = 0;
   var _tab = 0;
@@ -57,28 +59,28 @@ class _HomePageState extends State<HomePage> {
   /// 知识库停在哪个程度标签，返回详情后保持不动。
   var _libraryTab = 0;
 
-  /// 学习页是否展开已完成计划，默认收起。
-  var _showDonePlans = false;
   String? _exportPath;
-  List<StudyPlan> _plans = const [];
-  Timer? _reminderTimer;
-  var _reminderOpen = false;
 
   @override
   void initState() {
     super.initState();
+    _book.addListener(_onPlansChanged);
+    _book.load();
     _reload();
-    _loadPlans();
-    _reminderTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) => _checkPlanReminder(),
-    );
   }
 
   @override
   void dispose() {
-    _reminderTimer?.cancel();
+    _book.removeListener(_onPlansChanged);
+    _book.dispose();
     super.dispose();
+  }
+
+  /// 计划一变就重画：计数、列表和底部角标都跟着更新。
+  void _onPlansChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   /// 重新读档案：记录、掌握档和今日一步都从这里更新。
@@ -112,7 +114,7 @@ class _HomePageState extends State<HomePage> {
     await _reload();
   }
 
-  /// 打开一条知识的详情；在详情里加入计划后，带回计划并切到「学习」。
+  /// 打开一条知识的详情；在详情里加入计划后，带回计划并切到「规划」。
   Future<void> _openKnowledge(Concept concept, LearningDomain domain) async {
     final band = _profile.band;
     final learner = _learner;
@@ -135,19 +137,13 @@ class _HomePageState extends State<HomePage> {
     if (plan == null || !mounted) {
       return;
     }
-    final next = [..._plans, plan]
-      ..sort((a, b) => a.startAt.compareTo(b.startAt));
-    await _storePlans(next);
+    await _book.add(plan);
     if (!mounted) {
       return;
     }
-    setState(() => _tab = 1);
+    setState(() => _tab = 0);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('已加入学习计划 · ${plan.depth.label}'),
-        backgroundColor: paperInk,
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text('已加入规划 · ${plan.depth.label}')),
     );
   }
 
@@ -186,98 +182,6 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     setState(() => _exportPath = file.path);
-  }
-
-  /// 读取本机计划，读完顺手检查有没有到点的。
-  Future<void> _loadPlans() async {
-    final plans = await widget.planStore.load();
-    if (!mounted) {
-      return;
-    }
-    setState(() => _plans = plans);
-    await _checkPlanReminder();
-  }
-
-  /// 把新的计划列表写入本机并刷新界面。
-  Future<void> _storePlans(List<StudyPlan> plans) async {
-    await widget.planStore.save(plans);
-    if (!mounted) {
-      return;
-    }
-    setState(() => _plans = plans);
-  }
-
-  /// 到点的计划弹一次提醒；提醒过的写进本机，避免每次打开都再弹。
-  ///
-  /// 弹窗关掉后再写入：选「稍后」推迟 10 分钟，选「现在开始」记为已提醒。
-  Future<void> _checkPlanReminder() async {
-    if (_reminderOpen || !mounted) {
-      return;
-    }
-    final now = DateTime.now();
-    StudyPlan? due;
-    for (final plan in _plans) {
-      if (plan.done || !plan.remind || plan.remindedAt != null) {
-        continue;
-      }
-      if (plan.snoozedUntil != null && plan.snoozedUntil!.isAfter(now)) {
-        continue;
-      }
-      if (plan.startAt.isAfter(now)) {
-        continue;
-      }
-      due = plan;
-      break;
-    }
-    if (due == null) {
-      return;
-    }
-    final target = due;
-    final domain = widget.graph.domainById(target.domainId);
-    _reminderOpen = true;
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: paperSurface,
-        title: const Text('计划到时间了'),
-        content: Text(
-          '${domain?.name ?? '学习'} · ${target.depth.label}\n现在开始吗？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop('snooze'),
-            child: const Text('稍后'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop('start'),
-            child: const Text('现在开始'),
-          ),
-        ],
-      ),
-    );
-    _reminderOpen = false;
-    if (!mounted) {
-      return;
-    }
-    // 点空白关掉也算「稍后」，不丢提醒也不算已经提醒过。
-    final startNow = choice == 'start';
-    final marked = [
-      for (final plan in _plans)
-        plan.id == target.id
-            ? (startNow
-                ? plan.copyWith(remindedAt: now)
-                : plan.copyWith(
-                    snoozedUntil: now.add(const Duration(minutes: 10)),
-                  ))
-            : plan,
-    ];
-    await _storePlans(marked);
-    if (!mounted) {
-      return;
-    }
-    if (startNow && domain != null) {
-      await _openPlan(target, domain);
-    }
   }
 
   /// 进入计划对应的领域阶梯；简单了解只看前两层。
@@ -327,19 +231,10 @@ class _HomePageState extends State<HomePage> {
     if (!mounted || passed != true) {
       return;
     }
-    await _markPlanDone(plan);
+    await _book.markDone(plan);
     if (mounted) {
       Navigator.of(context).pop();
     }
-  }
-
-  /// 把一条计划标成已完成，不来回切换。
-  Future<void> _markPlanDone(StudyPlan plan) async {
-    final next = [
-      for (final item in _plans)
-        item.id == plan.id ? item.copyWith(done: true) : item,
-    ];
-    await _storePlans(next);
   }
 
   /// 新建一条计划：编辑器返回后写进本机。
@@ -356,18 +251,7 @@ class _HomePageState extends State<HomePage> {
     if (plan == null || !mounted) {
       return;
     }
-    final next = [..._plans, plan]
-      ..sort((a, b) => a.startAt.compareTo(b.startAt));
-    await _storePlans(next);
-  }
-
-  /// 标记完成或取消完成。
-  Future<void> _togglePlanDone(StudyPlan plan) async {
-    final next = [
-      for (final item in _plans)
-        item.id == plan.id ? item.copyWith(done: !item.done) : item,
-    ];
-    await _storePlans(next);
+    await _book.add(plan);
   }
 
   /// 删除一条计划前再确认一次，避免误触。
@@ -375,7 +259,6 @@ class _HomePageState extends State<HomePage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: paperSurface,
         title: const Text('删除这条计划？'),
         content: Text(
           '${widget.graph.domainById(plan.domainId)?.name ?? '学习'} · '
@@ -396,47 +279,13 @@ class _HomePageState extends State<HomePage> {
     if (confirmed != true || !mounted) {
       return;
     }
-    final next = _plans.where((item) => item.id != plan.id).toList();
-    await _storePlans(next);
+    await _book.remove(plan);
   }
 
   /// 当前入口对应的视图；只构建当前这一页，避免隐藏页面重复占位。
   Widget _currentView(AgeBand band, LearnerState learner) {
     return switch (_tab) {
-      1 => LearnView(
-          graph: widget.graph,
-          band: band,
-          learner: learner,
-          focusDomainId: _profile.focusDomainId,
-          recordCount: _recordCount,
-          plans: _plans,
-          showDonePlans: _showDonePlans,
-          onToggleDonePlans: () =>
-              setState(() => _showDonePlans = !_showDonePlans),
-          onOpenToday: _openConcept,
-          onAddPlan: _addPlan,
-          onOpenPlan: (plan) {
-            final domain = widget.graph.domainById(plan.domainId);
-            if (domain != null) {
-              _openPlan(plan, domain);
-            }
-          },
-          onToggleDone: _togglePlanDone,
-          onDeletePlan: _deletePlan,
-          onChangeBand: _changeBand,
-        ),
-      2 => ProfileView(
-          graph: widget.graph,
-          band: band,
-          learner: learner,
-          plans: _plans,
-          recordCount: _recordCount,
-          exportPath: _exportPath,
-          onChangeBand: _changeBand,
-          onGuardian: _guardian,
-          onExport: _export,
-        ),
-      _ => LibraryView(
+      1 => LibraryView(
           graph: widget.graph,
           band: band,
           learner: learner,
@@ -444,7 +293,61 @@ class _HomePageState extends State<HomePage> {
           onSelectTab: (index) => setState(() => _libraryTab = index),
           onOpen: _openKnowledge,
         ),
+      2 => LearnView(
+          graph: widget.graph,
+          band: band,
+          learner: learner,
+          focusDomainId: _profile.focusDomainId,
+          recordCount: _recordCount,
+          plans: _book.plans,
+          onOpenToday: _openConcept,
+          onOpenPlan: (plan) {
+            final domain = widget.graph.domainById(plan.domainId);
+            if (domain != null) {
+              _openPlan(plan, domain);
+            }
+          },
+          onGoPlan: () => setState(() => _tab = 0),
+          onAddPlan: _addPlan,
+          onChangeBand: _changeBand,
+        ),
+      3 => ProfileView(
+          graph: widget.graph,
+          band: band,
+          learner: learner,
+          plans: _book.plans,
+          recordCount: _recordCount,
+          exportPath: _exportPath,
+          onChangeBand: _changeBand,
+          onGuardian: _guardian,
+          onExport: _export,
+        ),
+      _ => PlanView(
+          graph: widget.graph,
+          band: band,
+          plans: _book.plans,
+          onAdd: _addPlan,
+          onOpen: (plan) {
+            final domain = widget.graph.domainById(plan.domainId);
+            if (domain != null) {
+              _openPlan(plan, domain);
+            }
+          },
+          onToggleDone: (plan) => _book.toggleDone(plan),
+          onDelete: _deletePlan,
+        ),
     };
+  }
+
+  /// 「规划」图标：有到点该提醒的计划时，挂一个小圆点。
+  Widget _planIcon(IconData icon) {
+    final due = _book.firstDue(DateTime.now()) != null;
+    return Badge(
+      isLabelVisible: due,
+      backgroundColor: paperOchre,
+      smallSize: 7,
+      child: Icon(icon),
+    );
   }
 
   @override
@@ -454,7 +357,10 @@ class _HomePageState extends State<HomePage> {
     if (band == null) {
       return Scaffold(
         body: Center(
-          child: Text('还没有选择年龄档。', style: Theme.of(context).textTheme.bodyMedium),
+          child: Text(
+            '还没有选择年龄档。',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
         ),
       );
     }
@@ -474,48 +380,62 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
+        // 一条极细的墨线，把标题区和纸面正文分开。
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1, color: paperLine),
+        ),
       ),
       body: learner == null
           ? const Center(
               child: CircularProgressIndicator(color: paperOchre),
             )
-          : SafeArea(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) {
-                  // 进入时淡入并轻轻往上抬，像翻过一页纸。
-                  return FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, 0.02),
-                        end: Offset.zero,
-                      ).animate(animation),
-                      child: child,
-                    ),
-                  );
-                },
-                child: KeyedSubtree(
-                  key: ValueKey<int>(_tab),
-                  child: _currentView(band, learner),
+          : PlanReminder(
+              book: _book,
+              graph: widget.graph,
+              onStart: _openPlan,
+              child: SafeArea(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    // 进入时淡入并轻轻往上抬，像翻过一页纸。
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.02),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: KeyedSubtree(
+                    key: ValueKey<int>(_tab),
+                    child: _currentView(band, learner),
+                  ),
                 ),
               ),
             ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (index) => setState(() => _tab = index),
-        destinations: const [
+        destinations: [
           NavigationDestination(
+            icon: _planIcon(Icons.event_note_outlined),
+            label: '规划',
+          ),
+          const NavigationDestination(
             icon: Icon(Icons.menu_book_outlined),
             label: '知识库',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.school_outlined),
             label: '学习',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.person_outline),
             label: '我的',
           ),

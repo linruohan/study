@@ -6,6 +6,8 @@ import '../knowledge/concept.dart';
 import '../knowledge/domain.dart';
 import '../learning/learner_state.dart';
 import 'theme.dart';
+import 'widgets/empty_state.dart';
+import 'widgets/page_header.dart';
 
 /// 学完之后的测验：逐条问答，低龄档再由监护人确认。
 class ReviewPage extends StatefulWidget {
@@ -111,17 +113,21 @@ class _ReviewPageState extends State<ReviewPage> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
                 children: [
-                  Text('学完这几步，答一答', style: text.headlineSmall),
-                  const SizedBox(height: 8),
-                  Text(
-                    _needsGuardian
+                  PageHeader(
+                    title: '学完这几步，答一答',
+                    subtitle: _needsGuardian
                         ? '每题想一想、答出来；最后由监护人确认。答对答错都不打分。'
                         : '每题想一想、答出来；确认完成就可以提交。答对答错都不打分。',
-                    style: text.bodySmall,
                   ),
                   const SizedBox(height: 18),
                   if (learned.isEmpty)
-                    _emptyCard(context)
+                    EmptyState(
+                      icon: Icons.edit_note_outlined,
+                      title: '还没有练过的步骤',
+                      message: '先在这个领域里学完至少一步，再回来小测。',
+                      actionLabel: '回去继续学',
+                      onAction: () => Navigator.of(context).pop(false),
+                    )
                   else ...[
                     for (final concept in learned) ...[
                       _questionCard(context, concept),
@@ -163,13 +169,6 @@ class _ReviewPageState extends State<ReviewPage> {
                     FilledButton(
                       key: const Key('submit_review'),
                       onPressed: _canSubmit && !_submitting ? _submit : null,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: paperOchre,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
                       child: Text(_submitting ? '正在记录…' : '提交小测'),
                     ),
                     if (!_canSubmit) ...[
@@ -244,32 +243,6 @@ class _ReviewPageState extends State<ReviewPage> {
                 Text('我答出来了', style: text.bodySmall),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 还没练过任何一步时的说明。
-  Widget _emptyCard(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    return PaperCard(
-      padding: const EdgeInsets.fromLTRB(20, 28, 20, 28),
-      child: Column(
-        children: [
-          const Icon(Icons.edit_note_outlined, size: 34, color: paperInkSoft),
-          const SizedBox(height: 12),
-          Text('还没有练过的步骤', style: text.titleMedium),
-          const SizedBox(height: 6),
-          Text(
-            '先在这个领域里学完至少一步，再回来小测。',
-            textAlign: TextAlign.center,
-            style: text.bodySmall,
-          ),
-          const SizedBox(height: 14),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('回去继续学'),
           ),
         ],
       ),

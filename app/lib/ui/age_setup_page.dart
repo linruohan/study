@@ -4,6 +4,7 @@ import '../app_brand.dart';
 import '../knowledge/age_band.dart';
 import '../profile/local_profile.dart';
 import 'theme.dart';
+import 'widgets/glyph_badge.dart';
 
 /// 年龄档选择页：打开应用先确认年龄。
 ///
@@ -64,18 +65,11 @@ class _AgeSetupPageState extends State<AgeSetupPage> {
                 onTap: _busy ? null : () => _choose(band),
                 child: Row(
                   children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: paperOchre.withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        _bandIcon(band),
-                        size: 22,
-                        color: paperOchre,
-                      ),
+                    GlyphBadge(
+                      icon: _bandIcon(band),
+                      color: paperOchre,
+                      size: 44,
+                      fontSize: 22,
                     ),
                     const SizedBox(width: 16),
                     Expanded(

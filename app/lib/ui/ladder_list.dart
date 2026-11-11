@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../knowledge/concept.dart';
 import '../learning/ladder.dart';
 import 'theme.dart';
+import 'widgets/glyph_badge.dart';
 
 /// 领域阶梯：从浅到深一行一格，标出状态，未解锁的行不能点。
 class LadderList extends StatelessWidget {
@@ -39,24 +40,11 @@ class LadderList extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Row(
         children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: canOpen
-                  ? domainColor.withValues(alpha: 0.12)
-                  : paperLine.withValues(alpha: 0.5),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                '${index + 1}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: canOpen ? domainColor : paperInkSoft,
-                ),
-              ),
-            ),
+          GlyphBadge(
+            glyph: '${index + 1}',
+            color: canOpen ? domainColor : paperInkSoft,
+            size: 34,
+            fontSize: 14,
           ),
           const SizedBox(width: 14),
           Expanded(

@@ -13,7 +13,7 @@ import 'package:study_app/ui/review_page.dart';
 import 'package:study_app/ui/theme.dart';
 
 void main() {
-  testWidgets('计划按领域分组，显示学习程度', (WidgetTester tester) async {
+  testWidgets('规划页按状态分组，显示学习程度', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(900, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() {
@@ -49,15 +49,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('学习'));
-    await tester.pumpAndSettle();
-    expect(find.text('已加入计划'), findsOneWidget);
+    // 默认就在「规划」页；到点的计划进「可以开始」，已完成的默认折起来。
     expect(find.textContaining('深入学习'), findsWidgets);
-    // 已完成的计划默认折起来，展开后才看得到。
-    expect(find.textContaining('简单了解'), findsNothing);
-    await tester.tap(find.byKey(const Key('done_toggle_math')));
+    expect(find.textContaining('简单了解 ·'), findsNothing);
+    await tester.tap(find.byKey(const Key('plan_done_toggle')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('简单了解'), findsWidgets);
+    expect(find.textContaining('简单了解 ·'), findsWidgets);
     expect(find.text('已完成'), findsWidgets);
     dir.deleteSync(recursive: true);
   });
@@ -79,6 +76,10 @@ void main() {
         planStore: LocalPlanStore(directory: dir),
       ),
     );
+    await tester.pumpAndSettle();
+
+    // 默认在「规划」，先切到「知识库」。
+    await tester.tap(find.byIcon(Icons.menu_book_outlined));
     await tester.pumpAndSettle();
 
     // 还没有练过的知识，「学习中」是空的。

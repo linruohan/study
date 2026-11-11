@@ -6,6 +6,8 @@ import '../knowledge/knowledge_graph.dart';
 import '../plan/plan_text.dart';
 import '../plan/study_plan.dart';
 import 'theme.dart';
+import 'widgets/glyph_badge.dart';
+import 'widgets/section_header.dart';
 
 /// 新建学习计划：选领域、选方向（简单了解或深入学习）、选开始时间与提醒。
 class PlanEditorPage extends StatefulWidget {
@@ -128,7 +130,7 @@ class _PlanEditorPageState extends State<PlanEditorPage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
           children: [
-            Text('选一个领域', style: text.titleMedium),
+            const SectionHeader(title: '选一个领域'),
             const SizedBox(height: 6),
             Text('计划会从这一档的阶梯开始。', style: text.bodySmall),
             const SizedBox(height: 12),
@@ -141,7 +143,7 @@ class _PlanEditorPageState extends State<PlanEditorPage> {
               const SizedBox(height: 10),
             ],
             const SizedBox(height: 14),
-            Text('怎么学', style: text.titleMedium),
+            const SectionHeader(title: '怎么学'),
             const SizedBox(height: 6),
             Text('简单了解只看前几格；深入学习走完整个阶梯。', style: text.bodySmall),
             const SizedBox(height: 12),
@@ -150,7 +152,7 @@ class _PlanEditorPageState extends State<PlanEditorPage> {
               const SizedBox(height: 10),
             ],
             const SizedBox(height: 14),
-            Text('什么时候开始', style: text.titleMedium),
+            const SectionHeader(title: '什么时候开始'),
             const SizedBox(height: 12),
             _timeCard(context),
             const SizedBox(height: 12),
@@ -184,13 +186,6 @@ class _PlanEditorPageState extends State<PlanEditorPage> {
             FilledButton(
               key: const Key('save_plan'),
               onPressed: _domains.isEmpty ? null : _save,
-              style: FilledButton.styleFrom(
-                backgroundColor: paperOchre,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
               child: const Text('保存计划'),
             ),
           ],
@@ -209,19 +204,11 @@ class _PlanEditorPageState extends State<PlanEditorPage> {
       onTap: () => setState(() => _domainId = domain.id),
       child: Row(
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: domain.color.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                domain.glyph,
-                style: TextStyle(fontSize: 18, color: domain.color),
-              ),
-            ),
+          GlyphBadge(
+            glyph: domain.glyph,
+            color: domain.color,
+            size: 40,
+            fontSize: 18,
           ),
           const SizedBox(width: 14),
           Expanded(

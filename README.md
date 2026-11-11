@@ -1,0 +1,167 @@
+# 文明重启（Lumen）
+
+**主题：教人（Enlighten Ren）**
+
+- **目的**：人教（Ren Sect）日昌，薪火相继，生生不息。
+- **愿景**：博古以丰己，启智而传薪；续人族文脉，继文明之火。
+
+按年龄走一条路，也可以按自己的领域从浅到深。
+
+## 这是什么
+
+一个规划人生学习计划的**浅计划管理工具**：为一个人从幼儿到成年的人生旅程排计划、按计划学习，逐步丰富己身。
+
+- **随年龄成长**：幼 → 小学（6–11）→ 初中、高中（12–17）→ 大学（18–20）→ 社会，年龄增加，学习的领域逐渐增多、逐层加深。
+- **从被动到主动**：幼儿视角从被动接触这个世界的一切开始；随年龄增长转为主动学习自己感兴趣的领域和知识，最终主动去改变这个世界。
+- **形成三观**：在完整、健康、科学的路径上逐步建立人生观、价值观、世界观，找到人生的终极目标——从哪里来，到哪里去。
+- **人生导师**：提供科学规划，是一个人的人生旅程导师，帮助实现人生价值。
+
+学习材料按年龄目录分开存放（幼儿 → 小学 → 中学 → 大学 → 社会）。本人、监护人和学校把记录留在本机，应用据此给出下一步并说明依据；档案由用户自己导出保存，不上传。
+
+## 平台支持
+
+基于 Flutter，一套代码覆盖各端：
+
+| 平台 | 状态 | 构建命令 / 产物 |
+| --- | --- | --- |
+| Windows 桌面 | ✅ 可构建运行 | `flutter build windows` → `app/build/windows/x64/runner/Release/study_app.exe` |
+| 安卓 | ✅ CI 构建 APK | `flutter build apk --release` |
+| iOS（苹果） | ✅ 工程已生成 | `flutter build ios`（需 macOS + Xcode） |
+| Linux 桌面 | ✅ 工程可生成 | `flutter build linux`（需 Linux 桌面工具链） |
+
+CI 目前自动构建 Android APK 与 Windows 包并上传 artifact；iOS/Linux 由本地或 macOS/Linux 机器构建。
+
+## 仓库结构
+
+```
+study/
+├── app/        Flutter 客户端（本机学习档案 + 幼儿触摸路线）
+├── server/     素材服务（Fastify + PostgreSQL + MinIO）
+├── doc/        分龄学习材料与设计文档（按年龄目录组织）
+├── design.md   产品设计：学习目标、设计理念、共同约定、动画与价值
+└── .github/workflows/   Flutter CI / 构建 / 发布
+```
+
+| 目录 | 内容 |
+| --- | --- |
+| [doc/幼儿](doc/幼儿/目录.md) | 3–5 岁：触摸、语音、人来带路；识字、数、情绪、动手在同一条路线里 |
+| [doc/小学](doc/小学/目录.md) | 6–11 岁：分科学习，6–8 岁与 9–11 岁题目不同 |
+| [doc/中学](doc/中学/目录.md) | 12–17 岁：初中建立分科，高中学习原理和证据 |
+| [doc/大学](doc/大学/目录.md) | 18–20 岁：通识、专业和一项做完的项目 |
+| [doc/社会](doc/社会/目录.md) | 离开学校以后：公共文本、健康与科学，用在生活里 |
+
+年龄档总览见 [doc/readme.md](doc/readme.md)，设计全文见 [design.md](design.md)，开发进展记在 [doc/进展.md](doc/进展.md)。
+
+## 客户端 app/
+
+Flutter 应用（`study_app`，中文名「文明重启」，英文名 Lumen），界面语言为简体中文，档案为本机 JSON，可导出副本。
+
+主要模块：
+
+| 模块 | 职责 |
+| --- | --- |
+| `lib/archive/` | 本机档案：练习记录、照护观察、导出副本 |
+| `lib/profile/` | 本机档案配置（年龄档等） |
+| `lib/plan/` | 学习计划：计划簿、计划文本、本地存储 |
+| `lib/learning/` | 技能四档（尝试 → 熟悉 → 熟练 → 掌握）、阶梯、复习、成就 |
+| `lib/knowledge/` | 知识图谱与领域目录（语、数、生活），按年龄档组织 |
+| `lib/guardian/` | 监护人：照护观察记录与依据提醒（明确不是教师/心理咨询师/医生的判断） |
+| `lib/ui/` | 页面与纸本风格主题：今日、路径、按兴趣看看、字库、复习等 |
+
+### 运行
+
+需要 Flutter 3.47.7（Dart 3.13.5），SDK 装在 `D:\flutter`；国内镜像用 `storage.flutter-io.cn`、`pub.flutter-io.cn`。
+
+```powershell
+cd app
+flutter pub get
+flutter analyze
+flutter test
+flutter run -d windows        # 桌面预览；也可 -d <device-id> 选安卓 / iOS / Linux
+```
+
+Windows 构建产物：`app/build/windows/x64/runner/Release/study_app.exe`。
+
+### 测试
+
+`app/test/` 下 8 个测试文件，覆盖档案、计划、技能阶梯、复习、知识图谱、监护人提醒与成就：
+
+```powershell
+cd app && flutter test
+```
+
+## 素材服务 server/
+
+纸本学习应用的素材服务：PostgreSQL 存元数据与纯文本，MinIO 存图片/音频/视频本体，库里只存 `object_key`，内容通过预签名地址获取。
+
+- 运行时：Node.js ≥ 20，TypeScript + Fastify 5 + zod 校验
+- 配置集中在 `src/config.ts`，环境变量缺项直接报错，不带病启动
+- 统一错误出口：`404`、`400` 参数错误、`413` 超限，响应形如 `{ error: { code, message } }`
+
+### 接口
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/healthz` | 健康检查 |
+| POST | `/api/assets/text` | 新建纯文本素材（正文直接入库） |
+| POST | `/api/assets` | 上传图片/音频/视频（multipart） |
+| GET | `/api/assets` | 列表，支持 `kind`、`limit`、`offset` |
+| GET | `/api/assets/:id` | 素材详情 |
+| GET | `/api/assets/:id/content` | 取内容（文本回正文，二进制返回预签名地址） |
+| DELETE | `/api/assets/:id` | 删除素材 |
+
+### 运行
+
+```powershell
+# 1. 起依赖（PostgreSQL 16 + MinIO）
+cd server
+docker compose up -d
+
+# 2. 配置
+copy .env.example .env        # 默认值与 docker-compose.yml 一致
+
+# 3. 建表并启动
+npm install
+npm run db:migrate
+npm run dev                   # http://127.0.0.1:3000
+```
+
+其他脚本：
+
+```powershell
+npm run typecheck    # tsc --noEmit
+npm run build        # tsc 编译到 dist/
+npm start            # 运行 dist/index.js
+```
+
+主要环境变量（完整见 [server/.env.example](server/.env.example)）：
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `PORT` | `3000` | 服务端口 |
+| `DATABASE_URL` | `postgres://study:...@127.0.0.1:5432/study` | PostgreSQL 连接串 |
+| `S3_ENDPOINT` | `http://127.0.0.1:9000` | MinIO S3 地址 |
+| `S3_BUCKET` | `study-assets` | 桶名（启动时自动创建） |
+| `MAX_UPLOAD_MB` | `50` | 单文件上限 |
+| `SIGNED_URL_TTL_SECONDS` | `900` | 预签名地址有效期 |
+| `CORS_ORIGIN` | `*` | 跨域来源，多个用逗号分隔 |
+
+## 持续集成
+
+`.github/workflows/` 下三个工作流，Flutter 版本统一为 `3.47.7`：
+
+| 工作流 | 触发 | 作用 |
+| --- | --- | --- |
+| `flutter-ci.yml` | `main` 的 push / PR（`app/**` 变更） | 复用构建工作流做检查 |
+| `flutter-build.yml` | 被引用 | 分析测试 + Android APK + Windows 包，产物上传为 artifact |
+| `flutter-release.yml` | 推送 `v*` 标签 | 先校验标签号与 `app/pubspec.yaml` 的 `version` 一致，再构建并发布 Release |
+
+## 设计要点
+
+- **档案在本机**：不上传；指导只依据本机已有记录，写明依据，允许改掉、拒绝或删除。
+- **技能四档**：尝试 → 熟悉 → 熟练 → 掌握，同一技能在不同题目里稳定使用才升级；不进排行。
+- **两句才记成长**：「我更能做成事了」与「我更知道自己是谁了」同时发生才记成成长。
+- **一个年龄一套学法**：3–5 岁用触摸和语音，6 岁起文字菜单分科学习，12 岁起学概念与出处。
+- **没有连胜、排行榜、课内购买和广告**；答错说明错在哪，并给一次改的机会。
+
+完整理念、三对张力与动画约定见 [design.md](design.md)。
