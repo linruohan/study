@@ -1,0 +1,18 @@
+{
+  "identities": [
+    {
+      "name": "study",
+      "credentials": [
+        {
+          "accessKey": "study_minio",
+          "secretKey": "study_minio_secret"
+        }
+      ],
+      "actions": [
+        "Admin",
+        "Read",
+        "Write"
+      ]
+    }
+  ]
+}

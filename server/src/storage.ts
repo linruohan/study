@@ -10,6 +10,10 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from './config.js';
 
 /// S3 客户端：MinIO 需要 path-style，所以 forcePathStyle 固定打开。
+///
+/// requestChecksumCalculation / responseChecksumValidation 设成 WHEN_REQUIRED，
+/// 是为了兼容不实现 flexible checksum 的 S3 服务（如 SeaweedFS），
+/// 否则 SDK 会额外带 x-amz-checksum-mode，导致预签名地址验签失败。
 export const s3 = new S3Client({
   endpoint: config.s3.endpoint,
   region: config.s3.region,
@@ -18,6 +22,8 @@ export const s3 = new S3Client({
     secretAccessKey: config.s3.secretKey,
   },
   forcePathStyle: true,
+  requestChecksumCalculation: 'WHEN_REQUIRED',
+  responseChecksumValidation: 'WHEN_REQUIRED',
 });
 
 /// 确认桶存在；首次启动或换了环境时自动建一个。

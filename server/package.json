@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "纸本学习应用的素材服务：PostgreSQL 存元数据与文本，MinIO 存图片/音频/视频。",
+  "description": "纸本学习应用的素材服务：PostgreSQL 存元数据与文本，S3 兼容对象存储存图片/音频/视频。",
   "engines": {
     "node": ">=20"
   },
@@ -12,8 +12,9 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "db:up": "docker compose up -d",
-    "db:down": "docker compose down",
+    "db:up": "wsl -d Arch -u root -- systemctl start postgresql seaweedfs",
+    "db:down": "wsl -d Arch -u root -- systemctl stop postgresql seaweedfs",
+    "db:status": "wsl -d Arch -u root -- systemctl is-active postgresql seaweedfs",
     "db:migrate": "tsx src/scripts/migrate.ts"
   },
   "dependencies": {
