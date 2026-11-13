@@ -22,7 +22,10 @@ void main() {
     // 监护人入口在「我的」里。
     await tester.tap(find.byIcon(Icons.person_outline));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('监护人记一条'));
+    final guardianRow = find.byKey(const Key('profile_guardian'));
+    await tester.scrollUntilVisible(guardianRow, 200, scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    await tester.tap(guardianRow);
     await tester.pumpAndSettle();
     expect(find.text('可以空着。空着不是落后。这是监护人的观察，不是孩子自己说的。'), findsOneWidget);
     expect(find.text('记录还不够。'), findsOneWidget);

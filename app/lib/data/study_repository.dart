@@ -202,6 +202,64 @@ class StudyRepository {
     String color = '#7A6A54',
   }) => _api.createCategory(id: id, parentId: parentId, name: name, question: question, glyph: glyph, color: color);
 
+  /// 修改分类的名称与描述；成功后由界面重新拉取知识库。
+  Future<Map<String, dynamic>> updateCategory({
+    required String id,
+    required String name,
+    String question = '',
+  }) => _api.updateCategory(id: id, name: name, question: question);
+
+  /// 在指定分类下新建学习领域；创建后由界面触发知识库刷新。
+  Future<Map<String, dynamic>> createDomain({
+    String? id,
+    required String categoryId,
+    required String name,
+    String glyph = '域',
+    String color = '#7A6A54',
+  }) => _api.createDomain(
+    id: id,
+    categoryId: categoryId,
+    name: name,
+    glyph: glyph,
+    color: color,
+  );
+
+  /// 在指定领域下新建一条知识；创建后由界面刷新知识目录。
+  Future<Map<String, dynamic>> createKnowledge({
+    required String domainId,
+    required String ageBandId,
+    required String topic,
+    String? doing,
+    String? praise,
+    String? check,
+    String? answer,
+    String? note,
+    String? glyph,
+  }) => _api.createKnowledge(
+    domainId: domainId,
+    ageBandId: ageBandId,
+    topic: topic,
+    doing: doing,
+    praise: praise,
+    check: check,
+    answer: answer,
+    note: note,
+    glyph: glyph,
+  );
+
+  /// 在某个学习程度下追加知识点。
+  Future<Map<String, dynamic>> addKnowledgePoint({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required String point,
+  }) => _api.addKnowledgePoint(
+    conceptId: conceptId,
+    ageBandId: ageBandId,
+    degreeId: degreeId,
+    point: point,
+  );
+
   Future<Map<String, dynamic>> reviewPointCorrection({
     required String correctionId,
     required bool approve,
@@ -289,7 +347,9 @@ class StudyRepository {
     await _push();
   }
 
-  /// 写缓存并同步服务端；同步失败只标记待推送，不打断界面。
+  /// 写缓存并同步服务端；写库成功后回读一次，内存以数据库为准。
+  ///
+  /// 同步失败只标记待推送，不打断界面，下次加载时会再试。
   Future<void> _push() async {
     final knowledge = _knowledgeJson;
     final deviceId = _deviceId;
@@ -305,9 +365,15 @@ class StudyRepository {
     try {
       await _api.saveUserData(deviceId, data);
       _pending = false;
+      try {
+        // 回读数据库，页面随后展示的就是库里真实保存的内容。
+        _applyUserData(await _api.fetchUserData(deviceId));
+      } catch (_) {
+        // 回读失败时先保留刚写入的内容，下次加载会再同步。
+      }
       await _cache.write(
         knowledge: knowledge,
-        userData: data,
+        userData: _userDataJson(),
         pending: false,
       );
     } catch (_) {

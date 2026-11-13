@@ -88,6 +88,8 @@ class FakeStudyApi implements StudyApi {
     required String ageBandId,
     required String degreeId,
     required int position,
+    int? limit,
+    int? offset,
   }) async {
     _ensureOnline();
     return const [];
@@ -114,6 +116,8 @@ class FakeStudyApi implements StudyApi {
     required String ageBandId,
     required String degreeId,
     required int position,
+    int? limit,
+    int? offset,
   }) async {
     _ensureOnline();
     return const [];
@@ -158,6 +162,154 @@ class FakeStudyApi implements StudyApi {
       'glyph': glyph,
       'color': color,
     };
+  }
+
+  /// 假的分类修改：回显新的名称与描述，便于断言界面提交了什么。
+  @override
+  Future<Map<String, dynamic>> updateCategory({
+    required String id,
+    required String name,
+    String question = '',
+  }) async {
+    _ensureOnline();
+    return {
+      'id': id,
+      'name': name,
+      'question': question,
+      'glyph': '类',
+      'color': '#7A6A54',
+    };
+  }
+
+  /// 假的领域创建：回显入参，便于断言界面提交了什么。
+  @override
+  Future<Map<String, dynamic>> createDomain({
+    String? id,
+    required String categoryId,
+    required String name,
+    String glyph = '域',
+    String color = '#7A6A54',
+  }) async {
+    _ensureOnline();
+    return {
+      'id': id ?? 'fake_domain',
+      'categoryId': categoryId,
+      'name': name,
+      'glyph': glyph,
+      'color': color,
+      'concepts': const [],
+    };
+  }
+
+  /// 假的知识创建：回显入参，便于断言界面提交了什么。
+  @override
+  Future<Map<String, dynamic>> createKnowledge({
+    required String domainId,
+    required String ageBandId,
+    required String topic,
+    String? doing,
+    String? praise,
+    String? check,
+    String? answer,
+    String? note,
+    String? glyph,
+  }) async {
+    _ensureOnline();
+    return {
+      'id': 'fake_knowledge',
+      'depth': 0,
+      'topic': topic,
+      'domainId': domainId,
+      'ageBandId': ageBandId,
+    };
+  }
+
+  /// 假的知识点创建：位置按入参模拟为 1。
+  @override
+  Future<Map<String, dynamic>> addKnowledgePoint({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required String point,
+  }) async {
+    _ensureOnline();
+    return {'position': 1, 'point': point};
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchPointChapters({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+  }) async {
+    _ensureOnline();
+    return const [];
+  }
+
+  @override
+  Future<Map<String, dynamic>> createPointChapter({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+    required String title,
+    String? content,
+  }) async {
+    _ensureOnline();
+    return {'title': title, 'content': content};
+  }
+
+  @override
+  Future<Map<String, dynamic>> updatePointChapter({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+    required int chapterPosition,
+    required String title,
+    String? content,
+  }) async {
+    _ensureOnline();
+    return {'chapterPosition': chapterPosition, 'title': title, 'content': content};
+  }
+
+  @override
+  Future<void> deletePointChapter({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+    required int chapterPosition,
+  }) async {
+    _ensureOnline();
+  }
+
+  @override
+  Future<Map<String, dynamic>> reviewPointCorrection({
+    required String correctionId,
+    required String reviewerDeviceId,
+    required bool approve,
+    int points = 0,
+  }) async {
+    _ensureOnline();
+    return {
+      'id': correctionId,
+      'status': approve ? 'approved' : 'rejected',
+      'pointsAwarded': approve ? points : 0,
+    };
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchPendingPointCorrections({int? limit, int? offset}) async {
+    _ensureOnline();
+    return const [];
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchPointCredits(String deviceId, {int? limit, int? offset}) async {
+    _ensureOnline();
+    return {'deviceId': deviceId, 'balance': 0, 'items': const []};
   }
 
   void _ensureOnline() {

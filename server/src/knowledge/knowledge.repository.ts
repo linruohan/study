@@ -1,4 +1,5 @@
 import { pool } from '../db.js';
+import { HttpError } from '../http/errors.js';
 import type {
   AgeBandDto,
   CategoryDto,
@@ -238,6 +239,222 @@ export async function loadKnowledgeBundle(): Promise<KnowledgeBundle> {
   return { ageBands, degrees, categories, domains, sageCredits: await loadSageCredits() };
 }
 
+export interface CreateDomainInput {
+  id?: string;
+  categoryId: string;
+  name: string;
+  glyph?: string;
+  color?: string;
+}
+
+/// 在某个分类下创建学习领域；id 留空时由服务端生成，界面可直接新建。
+export async function createDomain(input: CreateDomainInput): Promise<DomainDto> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // 领域必须挂在真实存在的分类下，否则知识库树会断掉。
+    const category = await client.query(
+      'SELECT 1 FROM knowledge_categories WHERE id = $1',
+      [input.categoryId],
+    );
+    if (category.rowCount === 0) {
+      const err = new Error('category_not_found') as Error & { statusCode?: number; code?: string };
+      err.statusCode = 404;
+      err.code = 'not_found';
+      throw err;
+    }
+    // 新领域排在所属分类现有领域之后。
+    const sort = await client.query<{ n: number }>(
+      `SELECT COALESCE(max(sort_order), 0) + 1 AS n FROM knowledge_domains WHERE category_id = $1`,
+      [input.categoryId],
+    );
+    const sortOrder = sort.rows[0]?.n ?? 1;
+    const result = await client.query<DomainRow>(
+      `INSERT INTO knowledge_domains (id, name, glyph, color, category_id, sort_order)
+       VALUES (COALESCE($1, 'sage_d_' || substr(gen_random_uuid()::text, 1, 8)), $2, $3, $4, $5, $6)
+       RETURNING id, name, glyph, color, category_id`,
+      [
+        input.id ?? null,
+        input.name,
+        input.glyph ?? '域',
+        input.color ?? '#7A6A54',
+        input.categoryId,
+        sortOrder,
+      ],
+    );
+    await client.query('COMMIT');
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      name: row.name,
+      glyph: row.glyph,
+      color: row.color,
+      categoryId: row.category_id,
+      concepts: [],
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    if ((error as Error).message === 'category_not_found') {
+      throw error;
+    }
+    const code = (error as { code?: string }).code;
+    if (code === '23505') {
+      const err = new Error('duplicate') as Error & { statusCode?: number; code?: string };
+      err.statusCode = 409;
+      err.code = 'conflict';
+      throw err;
+    }
+    if (code === '23503') {
+      const err = new Error('category_not_found') as Error & { statusCode?: number; code?: string };
+      err.statusCode = 404;
+      err.code = 'not_found';
+      throw err;
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export interface CreateConceptInput {
+  domainId: string;
+  ageBandId: string;
+  topic: string;
+  doing?: string;
+  praise?: string;
+  check?: string;
+  answer?: string;
+  note?: string;
+  glyph?: string | null;
+}
+
+/// 在某个领域下创建一条知识：概念节点 + 当前年龄档呈现 + 三档默认知识点。
+///
+/// 知识库页面用它统一管理知识；不依赖智者贡献流程。
+export async function createConcept(
+  input: CreateConceptInput,
+): Promise<{ id: string; depth: number }> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // 领域与年龄档必须真实存在，否则知识挂不上去。
+    const reference = await client.query<{ domain: string; band: string }>(
+      `SELECT
+         (SELECT 1 FROM knowledge_domains WHERE id = $1) AS domain,
+         (SELECT 1 FROM knowledge_age_bands WHERE id = $2) AS band`,
+      [input.domainId, input.ageBandId],
+    );
+    const refs = reference.rows[0];
+    if (!refs || refs.domain == null || refs.band == null) {
+      throw new HttpError(400, 'unknown_reference', '领域或年龄档不存在');
+    }
+
+    // 新知识排在领域现有最深一层之后，保证默认学习顺序。
+    const created = await client.query<{ id: string; depth: number }>(
+      `INSERT INTO knowledge_concepts (id, domain_id, depth, sort_order)
+       SELECT 'k_' || substr(gen_random_uuid()::text, 1, 10), $1,
+              COALESCE((SELECT max(depth) + 1 FROM knowledge_concepts WHERE domain_id = $1), 0),
+              COALESCE((SELECT max(sort_order) + 1 FROM knowledge_concepts WHERE domain_id = $1), 1)
+       RETURNING id, depth`,
+      [input.domainId],
+    );
+    const concept = created.rows[0];
+
+    const doing = input.doing?.trim() || input.topic;
+    const praise = input.praise?.trim() || doing;
+    const check = input.check?.trim() || input.topic;
+    const answer = input.answer?.trim() || input.note?.trim() || doing;
+    const note = input.note?.trim() || null;
+
+    // 本档呈现：符号缺省时沿用领域符号。
+    await client.query(
+      `INSERT INTO knowledge_variants
+         (concept_id, age_band_id, topic, glyph, doing, praise, check_question, answer, note)
+       SELECT $1, $2, $3, COALESCE($4, d.glyph), $5, $6, $7, $8, $9
+         FROM knowledge_domains d
+        WHERE d.id = $10`,
+      [concept.id, input.ageBandId, input.topic, input.glyph ?? null, doing, praise, check, answer, note, input.domainId],
+    );
+
+    // 三档默认知识点与种子数据规则一致；之后可在详情页继续追加。
+    await client.query(
+      `INSERT INTO knowledge_variant_points
+         (concept_id, age_band_id, degree_id, position, point)
+       VALUES
+         ($1, $2, 'beginner', 1, $3),
+         ($1, $2, 'beginner', 2, $4),
+         ($1, $2, 'familiar', 1, $5),
+         ($1, $2, 'familiar', 2, $6),
+         ($1, $2, 'advanced', 1, $7)
+       ON CONFLICT DO NOTHING`,
+      [concept.id, input.ageBandId, input.topic, doing, check, answer, praise],
+    );
+
+    await client.query('COMMIT');
+    return { id: concept.id, depth: concept.depth };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    const code = (error as { code?: string }).code;
+    if (code === '23503') {
+      throw new HttpError(400, 'unknown_reference', '领域或年龄档不存在');
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export interface CreatePointInput {
+  conceptId: string;
+  ageBandId: string;
+  degreeId: string;
+  point: string;
+}
+
+/// 在某条知识、某个年龄档、某个学习程度下追加一个知识点。
+///
+/// 位置接在该程度现有知识点末尾，章节随后可以挂到这个位置上。
+export async function addKnowledgePoint(
+  input: CreatePointInput,
+): Promise<{ position: number; point: string }> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // 知识点必须挂在已存在的分龄呈现上。
+    const variant = await client.query(
+      'SELECT 1 FROM knowledge_variants WHERE concept_id = $1 AND age_band_id = $2',
+      [input.conceptId, input.ageBandId],
+    );
+    if (variant.rowCount === 0) {
+      throw new HttpError(404, 'not_found', '这条知识在这个年龄档还没有内容');
+    }
+    const next = await client.query<{ position: number }>(
+      `SELECT COALESCE(max(position), 0) + 1 AS position
+         FROM knowledge_variant_points
+        WHERE concept_id = $1 AND age_band_id = $2 AND degree_id = $3`,
+      [input.conceptId, input.ageBandId, input.degreeId],
+    );
+    const position = next.rows[0]?.position ?? 1;
+    await client.query(
+      `INSERT INTO knowledge_variant_points
+         (concept_id, age_band_id, degree_id, position, point)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [input.conceptId, input.ageBandId, input.degreeId, position, input.point],
+    );
+    await client.query('COMMIT');
+    return { position, point: input.point };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    const code = (error as { code?: string }).code;
+    if (code === '23503') {
+      throw new HttpError(400, 'unknown_reference', '年龄档或学习程度不存在');
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export interface CreateCategoryInput {
   id: string;
   parentId?: string | null;
@@ -247,6 +464,40 @@ export interface CreateCategoryInput {
   modern?: string;
   glyph?: string;
   color?: string;
+}
+
+export interface UpdateCategoryInput {
+  id: string;
+  name: string;
+  question: string;
+}
+
+/// 修改分类的名称与描述；分类不存在时返回 404。
+export async function updateCategory(input: UpdateCategoryInput): Promise<CategoryDto> {
+  const result = await pool.query<CategoryRow>(
+    `UPDATE knowledge_categories
+        SET name = $2, question = $3
+      WHERE id = $1
+      RETURNING id, parent_id, name, question, ancient, modern, glyph, color`,
+    [input.id, input.name, input.question],
+  );
+  if (result.rowCount === 0) {
+    const err = new Error('category_not_found') as Error & { statusCode?: number; code?: string };
+    err.statusCode = 404;
+    err.code = 'not_found';
+    throw err;
+  }
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    parentId: row.parent_id,
+    name: row.name,
+    question: row.question,
+    ancient: row.ancient,
+    modern: row.modern,
+    glyph: row.glyph,
+    color: row.color,
+  };
 }
 
 /// 创建知识分类/子类型（可嵌套）；需要已执行 012 迁移以支持 parent_id。

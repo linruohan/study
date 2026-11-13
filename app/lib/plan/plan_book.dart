@@ -79,11 +79,13 @@ class PlanBook extends ChangeNotifier {
     return null;
   }
 
-  /// 写入本机并通知界面；排序集中在这里做一次。
+  /// 写入数据库并通知界面；写完再回读一次，页面以数据库内容为准。
   Future<void> _commit(List<StudyPlan> next) async {
     _plans = _sorted(next);
     notifyListeners();
     await _store.save(_plans);
+    _plans = _sorted(await _store.load());
+    notifyListeners();
   }
 
   /// 按开始时间从早到晚排序。

@@ -38,6 +38,33 @@ class KnowledgeGraph {
         .toList();
   }
 
+  /// 某一类别下挂载的全部领域（不看本档有没有内容）。
+  ///
+  /// 知识库树用这个来展示刚新建、还没添加知识的空领域。
+  List<LearningDomain> allDomainsInCategory(ScholarCategory category) {
+    return domains
+        .where((domain) => domain.category.id == category.id)
+        .toList();
+  }
+
+  /// 某分类及其所有后代子类型下挂载的领域。
+  ///
+  /// 新建知识时用来就近选择领域，空子类型也能落到父级的领域里。
+  List<LearningDomain> domainsUnderCategory(ScholarCategory category) {
+    final ids = <String>{};
+    void walk(ScholarCategory current) {
+      if (!ids.add(current.id)) {
+        return;
+      }
+      for (final child in childrenOf(current.id)) {
+        walk(child);
+      }
+    }
+
+    walk(category);
+    return domains.where((domain) => ids.contains(domain.category.id)).toList();
+  }
+
   /// 九类分类在本档的视图（兼容旧接口）：包含所有分类及其直接领域。
   List<({ScholarCategory category, List<LearningDomain> domains})>
       categoriesFor(AgeBand band) {

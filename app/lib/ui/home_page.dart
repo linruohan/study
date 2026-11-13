@@ -9,15 +9,22 @@ import '../knowledge/concept.dart';
 import '../knowledge/domain.dart';
 import '../knowledge/knowledge_catalog.dart';
 import '../knowledge/knowledge_graph.dart';
+import '../knowledge/taxonomy.dart';
 import '../learning/learner_state.dart';
+import '../messages/app_message.dart';
 import '../plan/plan_book.dart';
 import '../plan/plan_store.dart';
 import '../plan/study_plan.dart';
 import '../profile/profile_store.dart';
 import '../profile/study_profile.dart';
 import 'age_setup_page.dart';
+import 'add_domain_dialog.dart';
+import 'add_knowledge_dialog.dart';
+import 'add_subtype_dialog.dart';
+import 'edit_category_dialog.dart';
 import 'concept_page.dart';
 import 'domain_page.dart';
+import 'feedback.dart';
 import 'knowledge_detail_page.dart';
 import 'learn_view.dart';
 import 'library_view.dart';
@@ -27,6 +34,9 @@ import 'profile_view.dart';
 import 'review_page.dart';
 import 'sage_page.dart';
 import 'theme.dart';
+import 'widgets/app_mark.dart';
+import 'widgets/knowledge_search_bar.dart';
+import 'widgets/message_menu_button.dart';
 import 'widgets/plan_reminder.dart';
 
 /// 首页：规划、知识库、学习、我的四个入口。
@@ -65,10 +75,21 @@ class _HomePageState extends State<HomePage> {
   /// 知识库停在树的哪个节点（类 id 或领域 id），返回后保持不动。
   String? _librarySelection;
 
-  /// 知识库当前展开的类 id；null 表示全部收起。
+  /// 知识库当前展开的类 id。
+  ///
+  /// 左侧树是手风琴模式：同一时间只展开一条分支，点开新分支会收起其他分支。
   Set<String> _libraryExpanded = <String>{};
 
+  /// 当前知识图谱；在知识库添加领域/知识后换成刷新后的版本。
+  late KnowledgeGraph _graph = widget.graph;
+
   String? _exportPath;
+
+  /// 已读消息 id；目前只留在内存里，重启后再提示一次。
+  final Set<String> _readMessageIds = <String>{};
+
+  /// 本次启动时间，用来给系统通知一个稳定的时间。
+  late final DateTime _sessionStartedAt = DateTime.now();
 
   @override
   void initState() {
@@ -104,6 +125,279 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  /// 重新拉取知识库；成功后换图谱，失败返回原因（成功返回 null）。
+  Future<String?> _refreshKnowledge() async {
+    try {
+      final catalog = await widget.repository.reloadKnowledge();
+      if (!mounted) {
+        return null;
+      }
+      setState(() => _graph = catalog.graph);
+      return null;
+    } catch (error) {
+      return '$error';
+    }
+  }
+
+  /// 知识库「+ 领域」：弹窗创建后刷新目录，并选中新领域、展开所属分类。
+  Future<void> _addDomain(ScholarCategory category) async {
+    final createdId = await showDialog<String>(
+      context: context,
+      builder: (_) => AddDomainDialog(
+        repository: widget.repository,
+        category: category,
+      ),
+    );
+    if (createdId == null || !mounted) {
+      return;
+    }
+    final refreshError = await _refreshKnowledge();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _librarySelection = createdId;
+      // 手风琴：只保留新领域所在的那一条展开链。
+      _libraryExpanded = {..._ancestorIds(category), category.id};
+    });
+    if (refreshError != null) {
+      await showFailureDialog(
+        context,
+        title: '领域已添加，但目录刷新失败',
+        reason: '$refreshError\n\n重启应用后即可看到新领域。',
+      );
+      return;
+    }
+    showSuccessToast(context, '领域已添加');
+  }
+
+  /// 某个分类的祖先 id 集合，用来展开左侧树。
+  ///
+  /// 选中或新建深层子类时，把整条祖先链都展开，避免新节点藏在收起的父级里。
+  Set<String> _ancestorIds(ScholarCategory category) {
+    final ids = <String>{};
+    var parentId = category.parentId;
+    while (parentId != null) {
+      ids.add(parentId);
+      parentId = _graph.categoryById(parentId)?.parentId;
+    }
+    return ids;
+  }
+
+  /// childId 是否是 ancestorId 的后代。
+  ///
+  /// 收起某个分类时，用它一并收起已经展开的子孙，避免留下悬空的展开状态。
+  bool _isDescendantOf(String childId, String ancestorId) {
+    var parentId = _graph.categoryById(childId)?.parentId;
+    while (parentId != null) {
+      if (parentId == ancestorId) {
+        return true;
+      }
+      parentId = _graph.categoryById(parentId)?.parentId;
+    }
+    return false;
+  }
+
+  /// 点击分类卡片：选中它，并把左侧树切到它所在的那一条展开链。
+  ///
+  /// 手风琴模式会收起其他分支；当前分类若本来就是展开的，则保持它的子级可见。
+  void _selectLibraryCategory(ScholarCategory category) {
+    setState(() {
+      _librarySelection = category.id;
+      final expanded = _ancestorIds(category);
+      if (_libraryExpanded.contains(category.id)) {
+        expanded.add(category.id);
+      }
+      _libraryExpanded = expanded;
+    });
+  }
+
+  /// 展开 / 收起某个分类：展开时只保留这一条分支，其他分支全部收起。
+  void _toggleLibraryExpanded(ScholarCategory category) {
+    setState(() {
+      if (_libraryExpanded.contains(category.id)) {
+        _libraryExpanded = {
+          for (final id in _libraryExpanded)
+            if (id != category.id && !_isDescendantOf(id, category.id)) id,
+        };
+        return;
+      }
+      // 手风琴：祖先链保证可见，其余展开的分支全部让位。
+      _libraryExpanded = {..._ancestorIds(category), category.id};
+    });
+  }
+
+  /// 知识库「+ 子类型」：在当前分类下再挂一层子类型，并展开父级、选中新节点。
+  Future<void> _addSubtype(ScholarCategory parent) async {
+    final createdId = await showDialog<String>(
+      context: context,
+      builder: (_) => AddSubtypeDialog(
+        repository: widget.repository,
+        parent: parent,
+      ),
+    );
+    if (createdId == null || !mounted) {
+      return;
+    }
+    final refreshError = await _refreshKnowledge();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _librarySelection = createdId;
+      // 手风琴：只保留新子类所在的那一条展开链。
+      _libraryExpanded = {..._ancestorIds(parent), parent.id};
+    });
+    if (refreshError != null) {
+      await showFailureDialog(
+        context,
+        title: '子类型已添加，但目录刷新失败',
+        reason: '$refreshError\n\n重启应用后即可看到新子类型。',
+      );
+      return;
+    }
+    showSuccessToast(context, '子类型已添加');
+  }
+
+  /// 知识库「铅笔」：修改当前分类的名称与描述，成功后重新拉取知识库。
+  Future<void> _editCategory(ScholarCategory category) async {
+    final updated = await showDialog<bool>(
+      context: context,
+      builder: (_) => EditCategoryDialog(
+        repository: widget.repository,
+        category: category,
+      ),
+    );
+    if (updated != true || !mounted) {
+      return;
+    }
+    final refreshError = await _refreshKnowledge();
+    if (!mounted) {
+      return;
+    }
+    if (refreshError != null) {
+      await showFailureDialog(
+        context,
+        title: '分类已修改，但目录刷新失败',
+        reason: '$refreshError\n\n重启应用后即可看到新信息。',
+      );
+      return;
+    }
+    showSuccessToast(context, '分类信息已更新');
+  }
+
+  /// 知识库「+ 知识」：弹窗提交后刷新目录，停留在当前分类。
+  Future<void> _addKnowledge(ScholarCategory category) async {
+    final band = _profile.band;
+    if (band == null) {
+      return;
+    }
+    // 包含新建但还没有知识的空领域，方便把第一条知识加进去。
+    final domains = _graph.domains;
+    if (domains.isEmpty) {
+      showInfoToast(context, '还没有领域，先点「领域」添加一个吧。');
+      return;
+    }
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (_) => AddKnowledgeDialog(
+        repository: widget.repository,
+        band: band,
+        domains: domains,
+        initialDomain: _initialDomainIn(category, domains),
+      ),
+    );
+    if (created != true || !mounted) {
+      return;
+    }
+    final refreshError = await _refreshKnowledge();
+    if (!mounted) {
+      return;
+    }
+    if (refreshError != null) {
+      await showFailureDialog(
+        context,
+        title: '知识已添加，但目录刷新失败',
+        reason: '$refreshError\n\n重启应用后即可看到新知识。',
+      );
+      return;
+    }
+    showSuccessToast(context, '知识已添加');
+  }
+
+  /// 当前分类下优先选中的领域；没有取选中领域，再退回该分类子树里的第一个。
+  LearningDomain _initialDomainIn(
+    ScholarCategory category,
+    List<LearningDomain> domains,
+  ) {
+    final selection = _librarySelection;
+    if (selection != null) {
+      final selected = _graph.domainById(selection);
+      if (selected != null) {
+        return selected;
+      }
+    }
+    final under = _graph.domainsUnderCategory(category);
+    return under.isNotEmpty ? under.first : domains.first;
+  }
+
+  /// 汇总当前消息：系统欢迎 + 还没完成的计划提醒。
+  ///
+  /// 消息暂时按界面即时生成，不额外落库；后续接推送时再换存储。
+  List<AppMessage> _buildMessages(AgeBand band) {
+    final messages = <AppMessage>[
+      AppMessage(
+        id: 'system_welcome',
+        kind: AppMessageKind.system,
+        title: '欢迎回到文明重启',
+        body: '顶部搜索框可以直接找知识；分类、知识与知识点都在知识库里维护。',
+        createdAt: _sessionStartedAt,
+      ),
+    ];
+    for (final plan in _book.plans) {
+      if (plan.done) {
+        continue;
+      }
+      final domain = _graph.domainById(plan.domainId);
+      final concept =
+          plan.conceptId == null ? null : _graph.conceptById(plan.conceptId!);
+      final topic = concept != null && concept.availableIn(band)
+          ? concept.variantFor(band).topic
+          : null;
+      final body = topic != null
+          ? '${domain?.displayNameFor(band) ?? '知识'} · $topic'
+          : '${domain?.displayNameFor(band) ?? '领域'} 的阶梯在等你，点开就能继续。';
+      messages.add(
+        AppMessage(
+          id: 'plan_${plan.id}',
+          kind: AppMessageKind.planReminder,
+          title: '计划到时间了 · ${plan.degree?.label ?? '领域学习'}',
+          body: body,
+          createdAt: plan.startAt,
+          // 计划提醒需要处理，消息末尾给一个直达规划页的按钮。
+          actionLabel: '去计划',
+        ),
+      );
+    }
+    messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return messages;
+  }
+
+  /// 顶部消息角标上的未读数。
+  /// 点消息上的操作按钮：计划提醒直接切到「规划」页。
+  ///
+  /// 消息本身已在组件里记为已读，这里只负责页面跳转。
+  void _handleMessageAction(AppMessage message) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      if (message.kind == AppMessageKind.planReminder) {
+        _tab = 0;
+      }
+    });
+  }
+
   /// 进入某一步学习；回来后重新读档案。
   Future<void> _openConcept(Concept concept, LearningDomain domain) async {
     final band = _profile.band;
@@ -135,24 +429,20 @@ class _HomePageState extends State<HomePage> {
         builder: (_) => KnowledgeDetailPage(
           archive: widget.archive,
           repository: widget.repository,
-          graph: widget.graph,
+          graph: _graph,
           band: band,
           domain: domain,
           concept: concept,
           learner: learner,
           plans: _book.plans,
-          onAddPlan: (plan) {
-            _book.add(plan);
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('已加入计划 · ${plan.degree?.label ?? ''}')),
-              );
-            }
-          },
+          // 成功提示由详情页统一给出，这里只负责写计划簿，避免重复提示。
+          onAddPlan: _book.add,
         ),
       ),
     );
     await _reload();
+    // 详情页里可能刚加过知识点或章节，回到库页时再拉一次，保证展示的是数据库最新内容。
+    await _refreshKnowledge();
   }
 
   /// 换年龄档：年龄选择页保存后回来重读设置。
@@ -184,7 +474,8 @@ class _HomePageState extends State<HomePage> {
     await _reload();
   }
 
-  /// 进入智者页：填名字、提交知识或知识点、看自己的贡献。
+  /// 进入智者页：填署名、审核纠错、查看自己的贡献。
+  /// 回来后刷新目录，因为智者页里可能新建了分类或提交了知识。
   Future<void> _sage() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -194,6 +485,17 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+    if (!mounted) {
+      return;
+    }
+    final refreshError = await _refreshKnowledge();
+    if (refreshError != null && mounted) {
+      await showFailureDialog(
+        context,
+        title: '知识库刷新失败',
+        reason: refreshError,
+      );
+    }
   }
 
   Future<void> _export() async {
@@ -222,7 +524,7 @@ class _HomePageState extends State<HomePage> {
           archive: widget.archive,
           band: band,
           domain: domain,
-          graph: widget.graph,
+          graph: _graph,
           maxDepth: plan.depth.maxDepth,
           onFinish: () => _openReview(plan, domain),
         ),
@@ -265,7 +567,7 @@ class _HomePageState extends State<HomePage> {
     }
     final plan = await Navigator.of(context).push<StudyPlan>(
       MaterialPageRoute<StudyPlan>(
-        builder: (_) => PlanEditorPage(graph: widget.graph, band: band),
+        builder: (_) => PlanEditorPage(graph: _graph, band: band),
       ),
     );
     if (plan == null || !mounted) {
@@ -302,26 +604,23 @@ class _HomePageState extends State<HomePage> {
   Widget _currentView(AgeBand band, LearnerState learner) {
     return switch (_tab) {
       1 => LibraryView(
-          graph: widget.graph,
+          graph: _graph,
           band: band,
           learner: learner,
           selection: _librarySelection,
           expandedIds: _libraryExpanded,
-          onSelectCategory: (category) =>
-              setState(() => _librarySelection = category.id),
-          onToggleExpand: (category) => setState(() {
-            if (_libraryExpanded.contains(category.id)) {
-              _libraryExpanded = {..._libraryExpanded}..remove(category.id);
-            } else {
-              _libraryExpanded = {..._libraryExpanded, category.id};
-            }
-          }),
+          onSelectCategory: _selectLibraryCategory,
+          onToggleExpand: _toggleLibraryExpanded,
           onSelectDomain: (domain) =>
               setState(() => _librarySelection = domain.id),
           onOpen: _openKnowledge,
+          onAddSubtype: _addSubtype,
+          onAddDomain: _addDomain,
+          onAddKnowledge: _addKnowledge,
+          onEditCategory: _editCategory,
         ),
       2 => LearnView(
-          graph: widget.graph,
+          graph: _graph,
           band: band,
           learner: learner,
           focusDomainId: _profile.focusDomainId,
@@ -329,7 +628,7 @@ class _HomePageState extends State<HomePage> {
           plans: _book.plans,
           onOpenToday: _openConcept,
           onOpenPlan: (plan) {
-            final domain = widget.graph.domainById(plan.domainId);
+            final domain = _graph.domainById(plan.domainId);
             if (domain != null) {
               _openPlan(plan, domain);
             }
@@ -340,7 +639,7 @@ class _HomePageState extends State<HomePage> {
         ),
       3 => ProfileView(
             repository: widget.repository,
-            graph: widget.graph,
+            graph: _graph,
           band: band,
           learner: learner,
           plans: _book.plans,
@@ -353,7 +652,7 @@ class _HomePageState extends State<HomePage> {
         ),
       _ => PlanView(
           archive: widget.archive,
-          graph: widget.graph,
+          graph: _graph,
           band: band,
           learner: learner,
           plans: _book.plans,
@@ -391,20 +690,42 @@ class _HomePageState extends State<HomePage> {
     }
     return Scaffold(
       appBar: AppBar(
+        centerTitle: false,
+        titleSpacing: 16,
         title: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(AppBrand.name),
-            const SizedBox(width: 6),
-            Text(
-              AppBrand.englishName,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(letterSpacing: 2, color: paperInkSoft),
+            Tooltip(
+              message: '${AppBrand.name} ${AppBrand.englishName}',
+              child: const AppMark(size: 34),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: KnowledgeSearchBar(
+                graph: _graph,
+                band: band,
+                onOpen: _openKnowledge,
+              ),
             ),
           ],
         ),
+        actions: [
+          MessageMenuButton(
+            messages: _buildMessages(band),
+            readIds: _readMessageIds,
+            onMarkRead: (id) {
+              setState(() => _readMessageIds.add(id));
+            },
+            onMarkAllRead: () {
+              setState(() {
+                _readMessageIds.addAll(
+                  _buildMessages(band).map((message) => message.id),
+                );
+              });
+            },
+            onAction: _handleMessageAction,
+          ),
+          const SizedBox(width: 8),
+        ],
         // 一条极细的墨线，把标题区和纸面正文分开。
         bottom: const PreferredSize(
           preferredSize: Size.fromHeight(1),
@@ -417,7 +738,7 @@ class _HomePageState extends State<HomePage> {
             )
           : PlanReminder(
               book: _book,
-              graph: widget.graph,
+              graph: _graph,
               band: band,
               onStart: _openPlan,
               child: SafeArea(

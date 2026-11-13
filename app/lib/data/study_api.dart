@@ -62,6 +62,43 @@ abstract class StudyApi {
     String color = '#7A6A54',
   });
 
+  /// 修改分类的名称与描述。
+  Future<Map<String, dynamic>> updateCategory({
+    required String id,
+    required String name,
+    String question = '',
+  });
+
+  /// 在某个分类下创建学习领域；id 留空由服务端生成。
+  Future<Map<String, dynamic>> createDomain({
+    String? id,
+    required String categoryId,
+    required String name,
+    String glyph = '域',
+    String color = '#7A6A54',
+  });
+
+  /// 在某个领域下创建一条知识（概念 + 当前年龄档呈现 + 默认知识点）。
+  Future<Map<String, dynamic>> createKnowledge({
+    required String domainId,
+    required String ageBandId,
+    required String topic,
+    String? doing,
+    String? praise,
+    String? check,
+    String? answer,
+    String? note,
+    String? glyph,
+  });
+
+  /// 在某条知识的某个学习程度下追加一个知识点。
+  Future<Map<String, dynamic>> addKnowledgePoint({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required String point,
+  });
+
   /// 审核知识点纠错（通过可发放积分）。
   Future<Map<String, dynamic>> reviewPointCorrection({
     required String correctionId,
@@ -173,6 +210,83 @@ class HttpStudyApi implements StudyApi {
     });
     final category = map['category'];
     return category is Map ? Map<String, dynamic>.from(category) : map;
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateCategory({
+    required String id,
+    required String name,
+    String question = '',
+  }) async {
+    final map = await _request('PATCH', '/api/knowledge/categories/$id', body: {
+      'name': name,
+      'question': question,
+    });
+    final category = map['category'];
+    return category is Map ? Map<String, dynamic>.from(category) : map;
+  }
+
+  @override
+  Future<Map<String, dynamic>> createDomain({
+    String? id,
+    required String categoryId,
+    required String name,
+    String glyph = '域',
+    String color = '#7A6A54',
+  }) async {
+    final map = await _request('POST', '/api/knowledge/domains', body: {
+      if (id != null && id.isNotEmpty) 'id': id,
+      'categoryId': categoryId,
+      'name': name,
+      'glyph': glyph,
+      'color': color,
+    });
+    final domain = map['domain'];
+    return domain is Map ? Map<String, dynamic>.from(domain) : map;
+  }
+
+  @override
+  Future<Map<String, dynamic>> createKnowledge({
+    required String domainId,
+    required String ageBandId,
+    required String topic,
+    String? doing,
+    String? praise,
+    String? check,
+    String? answer,
+    String? note,
+    String? glyph,
+  }) async {
+    final map = await _request('POST', '/api/knowledge/concepts', body: {
+      'domainId': domainId,
+      'ageBandId': ageBandId,
+      'topic': topic,
+      if (doing != null && doing.isNotEmpty) 'doing': doing,
+      if (praise != null && praise.isNotEmpty) 'praise': praise,
+      if (check != null && check.isNotEmpty) 'check': check,
+      if (answer != null && answer.isNotEmpty) 'answer': answer,
+      if (note != null && note.isNotEmpty) 'note': note,
+      if (glyph != null && glyph.isNotEmpty) 'glyph': glyph,
+    });
+    final concept = map['concept'];
+    return concept is Map ? Map<String, dynamic>.from(concept) : map;
+  }
+
+  @override
+  Future<Map<String, dynamic>> addKnowledgePoint({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required String point,
+  }) async {
+    final map = await _request('POST', '/api/knowledge/points', body: {
+      'conceptId': conceptId,
+      'ageBandId': ageBandId,
+      'degreeId': degreeId,
+      'point': point,
+    });
+    final created = map['point'];
+    return created is Map ? Map<String, dynamic>.from(created) : map;
   }
 
   Map<String, String> _pointQuery({

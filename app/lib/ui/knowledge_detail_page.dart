@@ -10,6 +10,7 @@ import '../knowledge/knowledge_graph.dart';
 import '../knowledge/study_degree.dart';
 import '../learning/learner_state.dart';
 import '../plan/study_plan.dart';
+import 'feedback.dart';
 import 'theme.dart';
 import 'widgets/glyph_badge.dart';
 
@@ -51,7 +52,11 @@ class KnowledgeDetailPage extends StatefulWidget {
 class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     with SingleTickerProviderStateMixin {
   late final LearnerState _learner = widget.learner;
-  final Map<String, List<KnowledgeChapter>> _chapterOverrides = {};
+  /// 当前这条知识的最新服务端副本；每次写入后重新拉取并替换。
+  late Concept _concept = widget.concept;
+
+  /// 当前年龄档的呈现，始终从 [_concept] 派生，保证展示的就是数据库里的内容。
+  ConceptVariant get _variant => _concept.variantFor(widget.band);
 
   late final TabController _tabs = TabController(
     length: KnowledgeCatalog.instance.degrees.length,
@@ -80,16 +85,100 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     return catalog.sageCredits.creatorOfConcept(widget.concept.id);
   }
 
-  String _chapterKey(StudyDegree degree, int position) => '${degree.id}:$position';
+  /// 写入成功后重新向服务端要一份知识库，用返回的数据刷新当前页面。
+  ///
+  /// 页面内容只走「界面提交 → 接口写库 → 接口重新读取 → 页面重绘」这一条链路，
+  /// 不在本地拼接新数据，避免界面和数据库不一致。
+  Future<void> _refreshConcept() async {
+    final catalog = await widget.repository.reloadKnowledge();
+    final refreshed = catalog.graph.conceptById(widget.concept.id);
+    if (refreshed == null || !refreshed.availableIn(widget.band)) {
+      throw StateError('刷新后没找到这条知识，请稍后再试');
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() => _concept = refreshed);
+  }
 
-  List<KnowledgeChapter> _chaptersFor(StudyDegree degree, ConceptVariant variant, int position) {
-    return _chapterOverrides[_chapterKey(degree, position)] ?? variant.chaptersFor(degree, position);
+  /// 在某个学习程度下追加一个知识点；写库成功后重新读取并刷新页面。
+  Future<void> _addPoint(
+    BuildContext context,
+    StudyDegree degree,
+  ) async {
+    final controller = TextEditingController();
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const Key('add_point_dialog'),
+        title: Text('添加知识点 · ${degree.label}'),
+        content: SizedBox(
+          width: 420,
+          child: TextField(
+            key: const Key('add_point_text'),
+            controller: controller,
+            autofocus: true,
+            maxLength: 500,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: '知识点内容',
+              hintText: '这个程度下要多学的一句',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const Key('add_point_submit'),
+            onPressed: () {
+              if (controller.text.trim().isEmpty) {
+                return;
+              }
+              Navigator.of(ctx).pop(true);
+            },
+            child: const Text('添加'),
+          ),
+        ],
+      ),
+    );
+    final point = controller.text.trim();
+    controller.dispose();
+    if (created != true || point.isEmpty || !mounted) {
+      return;
+    }
+    try {
+      await widget.repository.addKnowledgePoint(
+        conceptId: widget.concept.id,
+        ageBandId: widget.band.id,
+        degreeId: degree.id,
+        point: point,
+      );
+      // 重新从数据库读取，页面显示接口返回的最新知识点。
+      await _refreshConcept();
+      if (!mounted) {
+        return;
+      }
+      showSuccessToast(this.context, '知识点已添加');
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      await showFailureDialog(
+        this.context,
+        title: '知识点添加失败',
+        reason: '$error',
+      );
+    }
   }
 
   Future<void> _addChapter(BuildContext context, StudyDegree degree, int position) async {
     final titleController = TextEditingController();
     final contentController = TextEditingController();
-    final messenger = ScaffoldMessenger.of(context);
     final created = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -117,7 +206,11 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
                 if (ctx.mounted) Navigator.of(ctx).pop(true);
               } catch (e) {
                 if (!ctx.mounted) return;
-                ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('添加失败：$e')));
+                await showFailureDialog(
+                  ctx,
+                  title: '章节添加失败',
+                  reason: '$e',
+                );
               }
             },
             child: const Text('添加'),
@@ -130,26 +223,17 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     contentController.dispose();
     if (!ok || !mounted) return;
     try {
-      final raw = await widget.repository.fetchPointChapters(
-        conceptId: widget.concept.id,
-        ageBandId: widget.band.id,
-        degreeId: degree.id,
-        pointPosition: position,
+      // 章节已入库，重新读取整条知识，页面按数据库内容重绘。
+      await _refreshConcept();
+      if (!mounted) return;
+      showSuccessToast(this.context, '章节已添加');
+    } catch (error) {
+      if (!mounted) return;
+      await showFailureDialog(
+        this.context,
+        title: '章节已添加，但刷新失败',
+        reason: '$error',
       );
-      final chapters = [for (final item in raw) KnowledgeChapter.fromJson(item)];
-      if (!mounted) return;
-      setState(() { _chapterOverrides[_chapterKey(degree, position)] = chapters; });
-      messenger.showSnackBar(const SnackBar(content: Text('章节已添加')));
-      // 后台刷新知识库缓存，便于下次进入同步
-      // ignore: unawaited_futures
-      widget.repository.reloadKnowledge();
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _chapterOverrides[_chapterKey(degree, position)] = [
-          ..._chaptersFor(degree, widget.concept.variantFor(widget.band), position),
-        ];
-      });
     }
   }
 
@@ -162,9 +246,7 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
   Future<void> _addToPlan() async {
     final degree = _degree;
     if (_plannedDegrees.contains(degree)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('这个知识已在计划里（${degree.label}）')),
-      );
+      showInfoToast(context, '这个知识已在计划里（${degree.label}）');
       return;
     }
     final now = DateTime.now();
@@ -183,14 +265,12 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
       return;
     }
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已加入计划 · ${degree.label}')),
-    );
+    showSuccessToast(context, '已加入计划 · ${degree.label}');
   }
 
   @override
   Widget build(BuildContext context) {
-    final variant = widget.concept.variantFor(widget.band);
+    final variant = _variant;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.domain.displayNameFor(widget.band)),
@@ -294,10 +374,27 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
           ],
         ),
         const SizedBox(height: 18),
-        Text('「${degree.label}」要学的知识点', style: text.titleMedium),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '「${degree.label}」要学的知识点',
+                style: text.titleMedium,
+              ),
+            ),
+            TextButton.icon(
+              key: Key('degree_add_point_${degree.id}'),
+              onPressed: () => _addPoint(context, degree),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('添加知识点'),
+            ),
+          ],
+        ),
         const SizedBox(height: 10),
+        if (points.isEmpty)
+          Text('这个程度还没有知识点，点右上角添加一条吧。', style: text.bodySmall),
         for (var i = 0; i < points.length; i++) ...[
-          _pointCard(context, degree, variant, points[i], i + 1),
+          _pointCard(context, degree, points[i], i + 1),
           const SizedBox(height: 10),
         ],
         const SizedBox(height: 8),
@@ -313,12 +410,11 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
   Widget _pointCard(
     BuildContext context,
     StudyDegree degree,
-    ConceptVariant variant,
     String point,
     int position,
   ) {
     final text = Theme.of(context).textTheme;
-    final chapters = _chaptersFor(degree, variant, position);
+    final chapters = _variant.chaptersFor(degree, position);
     return PaperCard(
       key: Key('point_${degree.id}_${position - 1}'),
       padding: const EdgeInsets.all(14),
@@ -420,24 +516,9 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     );
   }
 
-  Future<void> _refreshChapters(StudyDegree degree, int pointPosition) async {
-    final raw = await widget.repository.fetchPointChapters(
-      conceptId: widget.concept.id,
-      ageBandId: widget.band.id,
-      degreeId: degree.id,
-      pointPosition: pointPosition,
-    );
-    final chapters = [for (final item in raw) KnowledgeChapter.fromJson(item)];
-    if (!mounted) return;
-    setState(() { _chapterOverrides[_chapterKey(degree, pointPosition)] = chapters; });
-    // ignore: unawaited_futures
-    widget.repository.reloadKnowledge();
-  }
-
   Future<void> _editChapter(BuildContext context, StudyDegree degree, int pointPosition, KnowledgeChapter chapter, int chapterPosition) async {
     final titleController = TextEditingController(text: chapter.title);
     final contentController = TextEditingController(text: chapter.content ?? '');
-    final messenger = ScaffoldMessenger.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -465,7 +546,13 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
                 );
                 if (ctx.mounted) Navigator.of(ctx).pop(true);
               } catch (e) {
-                if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('保存失败：$e')));
+                if (ctx.mounted) {
+                  await showFailureDialog(
+                    ctx,
+                    title: '章节保存失败',
+                    reason: '$e',
+                  );
+                }
               }
             },
             child: const Text('保存'),
@@ -477,15 +564,16 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     contentController.dispose();
     if (ok != true || !mounted) return;
     try {
-      await _refreshChapters(degree, pointPosition);
-      messenger.showSnackBar(const SnackBar(content: Text('章节已更新')));
+      await _refreshConcept();
+      if (!mounted) return;
+      showSuccessToast(this.context, '章节已更新');
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('刷新失败：$e')));
+      if (!mounted) return;
+      await showFailureDialog(this.context, title: '章节刷新失败', reason: '$e');
     }
   }
 
   Future<void> _deleteChapter(BuildContext context, StudyDegree degree, int pointPosition, int chapterPosition) async {
-    final messenger = ScaffoldMessenger.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -506,10 +594,12 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
         pointPosition: pointPosition,
         chapterPosition: chapterPosition,
       );
-      await _refreshChapters(degree, pointPosition);
-      messenger.showSnackBar(const SnackBar(content: Text('章节已删除')));
+      await _refreshConcept();
+      if (!mounted) return;
+      showSuccessToast(this.context, '章节已删除');
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('删除失败：$e')));
+      if (!mounted) return;
+      await showFailureDialog(this.context, title: '章节删除失败', reason: '$e');
     }
   }
 
@@ -616,7 +706,7 @@ class _PointCommentsSheetState extends State<_PointCommentsSheet> {
       await _reload();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('发送失败：$e')));
+        await showFailureDialog(context, title: '评论发送失败', reason: '$e');
       }
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -784,11 +874,11 @@ class _PointCorrectionsSheetState extends State<_PointCorrectionsSheet> {
       _suggestionController.clear();
       await _reload();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('纠错已提交')));
+        showSuccessToast(context, '纠错已提交');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('提交失败：$e')));
+        await showFailureDialog(context, title: '纠错提交失败', reason: '$e');
       }
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -807,13 +897,11 @@ class _PointCorrectionsSheetState extends State<_PointCorrectionsSheet> {
       );
       await _reload();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(approve ? '已审核通过并发放积分' : '已驳回纠错')),
-        );
+        showSuccessToast(context, approve ? '已审核通过并发放积分' : '已驳回纠错');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('审核失败：$e')));
+        await showFailureDialog(context, title: '审核失败', reason: '$e');
       }
     } finally {
       if (mounted) setState(() => _reviewingId = '');

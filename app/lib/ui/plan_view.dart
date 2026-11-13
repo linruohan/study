@@ -10,6 +10,7 @@ import '../knowledge/study_degree.dart';
 import '../learning/learner_state.dart';
 import '../plan/study_plan.dart';
 import 'degree_learning_page.dart';
+import 'feedback.dart';
 import 'theme.dart';
 import 'widgets/empty_state.dart';
 import 'widgets/glyph_badge.dart';
@@ -139,12 +140,9 @@ class _PlanViewState extends State<PlanView> {
       concept,
       domain,
     );
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '已加入计划 · ${KnowledgeCatalog.instance.degrees.first.label}',
-        ),
-      ),
+    showSuccessToast(
+      context,
+      '已加入计划 · ${KnowledgeCatalog.instance.degrees.first.label}',
     );
   }
 

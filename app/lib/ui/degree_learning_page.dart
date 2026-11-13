@@ -6,6 +6,7 @@ import '../knowledge/concept.dart';
 import '../knowledge/domain.dart';
 import '../knowledge/study_degree.dart';
 import '../learning/mastery.dart';
+import 'feedback.dart';
 import 'theme.dart';
 import 'widgets/glyph_badge.dart';
 
@@ -109,13 +110,7 @@ class _DegreeLearningPageState extends State<DegreeLearningPage> {
     });
     // 最后一条勾完，给一句完成反馈；不弹窗，不另发奖励。
     if (_checked.values.every((value) => value) && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '「${widget.degree.label}」的知识点都学完了',
-          ),
-        ),
-      );
+      showSuccessToast(context, '「${widget.degree.label}」的知识点都学完了');
     }
   }
 

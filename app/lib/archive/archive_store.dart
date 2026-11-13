@@ -91,6 +91,7 @@ class ArchiveStore {
     );
     final next = _repository.archive.add(record);
     await _repository.saveArchive(next);
-    return next;
+    // 保存后仓库会回读数据库，这里返回回读到的档案，页面展示以库为准。
+    return _repository.archive;
   }
 }
