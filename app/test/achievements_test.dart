@@ -1,25 +1,26 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:study_app/knowledge/age_band.dart';
-import 'package:study_app/knowledge/knowledge_graph.dart';
 import 'package:study_app/learning/achievements.dart';
 import 'package:study_app/learning/learner_state.dart';
 import 'package:study_app/plan/study_plan.dart';
 
+import 'support/study_fixture.dart';
+
 void main() {
-  const graph = KnowledgeGraph.defaults;
+  final catalog = installTestCatalog();
+  final graph = catalog.graph;
 
   test('没有记录时等级为空，徽章都未达成', () {
     final learner = LearnerState({});
     final standings = buildStandings(
       graph: graph,
-      band: AgeBand.toddler,
+      band: testBand('toddler'),
       learner: learner,
     );
     expect(standings.every((standing) => standing.level == null), isTrue);
 
     final badges = buildAchievements(
       graph: graph,
-      band: AgeBand.toddler,
+      band: testBand('toddler'),
       learner: learner,
       plans: const [],
     );
@@ -30,7 +31,7 @@ void main() {
     final learner = LearnerState({'zi_ri': 4});
     final standings = buildStandings(
       graph: graph,
-      band: AgeBand.toddler,
+      band: testBand('toddler'),
       learner: learner,
     );
     final language = standings.firstWhere((standing) => standing.domain.id == 'language');
@@ -39,7 +40,7 @@ void main() {
 
     final badges = buildAchievements(
       graph: graph,
-      band: AgeBand.toddler,
+      band: testBand('toddler'),
       learner: learner,
       plans: const [],
     );
@@ -51,7 +52,7 @@ void main() {
     final learner = LearnerState({'zi_ri': 5});
     final standings = buildStandings(
       graph: graph,
-      band: AgeBand.toddler,
+      band: testBand('toddler'),
       learner: learner,
     );
     final language = standings.firstWhere((standing) => standing.domain.id == 'language');
@@ -59,7 +60,7 @@ void main() {
 
     final badges = buildAchievements(
       graph: graph,
-      band: AgeBand.toddler,
+      band: testBand('toddler'),
       learner: learner,
       plans: [
         StudyPlan(

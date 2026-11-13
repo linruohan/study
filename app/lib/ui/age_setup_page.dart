@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../app_brand.dart';
 import '../knowledge/age_band.dart';
-import '../profile/local_profile.dart';
+import '../knowledge/knowledge_catalog.dart';
+import '../profile/profile_store.dart';
+import '../profile/study_profile.dart';
 import 'theme.dart';
 import 'widgets/glyph_badge.dart';
 
@@ -16,7 +18,7 @@ class AgeSetupPage extends StatefulWidget {
     required this.onChosen,
   });
 
-  final LocalProfile store;
+  final ProfileStore store;
   final ValueChanged<AgeBand> onChosen;
 
   @override
@@ -59,7 +61,7 @@ class _AgeSetupPageState extends State<AgeSetupPage> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 20),
-            for (final band in AgeBand.values) ...[
+            for (final band in KnowledgeCatalog.instance.ageBands) ...[
               PaperCard(
                 key: Key('band_${band.id}'),
                 onTap: _busy ? null : () => _choose(band),
@@ -103,13 +105,14 @@ class _AgeSetupPageState extends State<AgeSetupPage> {
 
 /// 每个年龄档用一个简图标，幼儿档不依赖文字也能认出来。
 IconData _bandIcon(AgeBand band) {
-  return switch (band) {
-    AgeBand.toddler => Icons.child_care_outlined,
-    AgeBand.lowerPrimary => Icons.auto_stories_outlined,
-    AgeBand.upperPrimary => Icons.edit_outlined,
-    AgeBand.middleSchool => Icons.science_outlined,
-    AgeBand.highSchool => Icons.lightbulb_outline,
-    AgeBand.college => Icons.school_outlined,
-    AgeBand.beyondSchool => Icons.work_outline,
+  return switch (band.id) {
+    'toddler' => Icons.child_care_outlined,
+    'lower_primary' => Icons.auto_stories_outlined,
+    'upper_primary' => Icons.edit_outlined,
+    'middle_school' => Icons.science_outlined,
+    'high_school' => Icons.lightbulb_outline,
+    'college' => Icons.school_outlined,
+    'beyond_school' => Icons.work_outline,
+    _ => Icons.school_outlined,
   };
 }

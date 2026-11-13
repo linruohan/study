@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../archive/local_archive.dart';
+import '../archive/archive_store.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
 import '../knowledge/domain.dart';
@@ -18,12 +18,12 @@ class DomainPage extends StatefulWidget {
     required this.archive,
     required this.band,
     required this.domain,
-    this.graph = KnowledgeGraph.defaults,
+    required this.graph,
     this.maxDepth,
     this.onFinish,
   });
 
-  final LocalArchive archive;
+  final ArchiveStore archive;
   final AgeBand band;
   final LearningDomain domain;
   final KnowledgeGraph graph;
@@ -91,7 +91,7 @@ class _DomainPageState extends State<DomainPage> {
     final learner = _learner;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.band.showsSubjectNames ? widget.domain.name : '去看看'),
+        title: Text(widget.domain.displayNameFor(widget.band)),
       ),
       body: SafeArea(
         child: ListView(

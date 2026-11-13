@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../app_brand.dart';
-import '../archive/local_archive.dart';
+import '../archive/archive_store.dart';
+import '../data/study_repository.dart';
 import '../guardian/guardian_page.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
 import '../knowledge/domain.dart';
+import '../knowledge/knowledge_catalog.dart';
 import '../knowledge/knowledge_graph.dart';
 import '../learning/learner_state.dart';
-import '../plan/local_plan_store.dart';
 import '../plan/plan_book.dart';
+import '../plan/plan_store.dart';
 import '../plan/study_plan.dart';
-import '../profile/local_profile.dart';
+import '../profile/profile_store.dart';
+import '../profile/study_profile.dart';
 import 'age_setup_page.dart';
 import 'concept_page.dart';
 import 'domain_page.dart';
@@ -22,6 +25,7 @@ import 'plan_editor_page.dart';
 import 'plan_view.dart';
 import 'profile_view.dart';
 import 'review_page.dart';
+import 'sage_page.dart';
 import 'theme.dart';
 import 'widgets/plan_reminder.dart';
 
@@ -36,14 +40,16 @@ class HomePage extends StatefulWidget {
     required this.store,
     required this.planStore,
     required this.profile,
-    this.graph = KnowledgeGraph.defaults,
+    required this.graph,
+    required this.repository,
   });
 
-  final LocalArchive archive;
-  final LocalProfile store;
-  final LocalPlanStore planStore;
+  final ArchiveStore archive;
+  final ProfileStore store;
+  final PlanStore planStore;
   final StudyProfile profile;
   final KnowledgeGraph graph;
+  final StudyRepository repository;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -58,6 +64,9 @@ class _HomePageState extends State<HomePage> {
 
   /// 知识库停在树的哪个节点（类 id 或领域 id），返回后保持不动。
   String? _librarySelection;
+
+  /// 知识库当前展开的类 id；null 表示全部收起。
+  Set<String> _libraryExpanded = <String>{};
 
   String? _exportPath;
 
@@ -125,6 +134,7 @@ class _HomePageState extends State<HomePage> {
       MaterialPageRoute<void>(
         builder: (_) => KnowledgeDetailPage(
           archive: widget.archive,
+          repository: widget.repository,
           graph: widget.graph,
           band: band,
           domain: domain,
@@ -172,6 +182,18 @@ class _HomePageState extends State<HomePage> {
       ),
     );
     await _reload();
+  }
+
+  /// 进入智者页：填名字、提交知识或知识点、看自己的贡献。
+  Future<void> _sage() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SagePage(
+          repository: widget.repository,
+          store: widget.store,
+        ),
+      ),
+    );
   }
 
   Future<void> _export() async {
@@ -257,6 +279,25 @@ class _HomePageState extends State<HomePage> {
     await _book.remove(plan);
   }
 
+  /// 在规划页把一条没排进计划的知识按入门程度排进来。
+  Future<void> _addConceptPlan(
+    Concept concept,
+    LearningDomain domain,
+  ) async {
+    final now = DateTime.now();
+    await _book.add(
+      StudyPlan(
+        id: 'plan_${now.microsecondsSinceEpoch}',
+        domainId: domain.id,
+        depth: PlanDepth.deep,
+        conceptId: concept.id,
+        degree: KnowledgeCatalog.instance.degrees.first,
+        startAt: now,
+        remind: false,
+      ),
+    );
+  }
+
   /// 当前入口对应的视图；只构建当前这一页，避免隐藏页面重复占位。
   Widget _currentView(AgeBand band, LearnerState learner) {
     return switch (_tab) {
@@ -265,8 +306,16 @@ class _HomePageState extends State<HomePage> {
           band: band,
           learner: learner,
           selection: _librarySelection,
+          expandedIds: _libraryExpanded,
           onSelectCategory: (category) =>
               setState(() => _librarySelection = category.id),
+          onToggleExpand: (category) => setState(() {
+            if (_libraryExpanded.contains(category.id)) {
+              _libraryExpanded = {..._libraryExpanded}..remove(category.id);
+            } else {
+              _libraryExpanded = {..._libraryExpanded, category.id};
+            }
+          }),
           onSelectDomain: (domain) =>
               setState(() => _librarySelection = domain.id),
           onOpen: _openKnowledge,
@@ -299,6 +348,7 @@ class _HomePageState extends State<HomePage> {
           onChangeBand: _changeBand,
           onGuardian: _guardian,
           onExport: _export,
+          onSage: _sage,
         ),
       _ => PlanView(
           archive: widget.archive,
@@ -307,6 +357,7 @@ class _HomePageState extends State<HomePage> {
           learner: learner,
           plans: _book.plans,
           onDeleted: _deletePlan,
+          onAddConceptPlan: _addConceptPlan,
           onReload: _reload,
         ),
     };
@@ -366,6 +417,7 @@ class _HomePageState extends State<HomePage> {
           : PlanReminder(
               book: _book,
               graph: widget.graph,
+              band: band,
               onStart: _openPlan,
               child: SafeArea(
                 child: AnimatedSwitcher(

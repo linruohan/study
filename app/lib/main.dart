@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app_brand.dart';
-import 'archive/local_archive.dart';
-import 'plan/local_plan_store.dart';
-import 'profile/local_profile.dart';
+import 'data/study_repository.dart';
 import 'ui/bootstrap_page.dart';
 import 'ui/theme.dart';
 
@@ -12,13 +10,11 @@ void main() {
   runApp(const StudyApp());
 }
 
-/// 应用入口。测试可以直接注入档案、档位与计划存储，避免写到真实目录。
+/// 应用入口。测试可以注入假仓库，避免访问真实服务。
 class StudyApp extends StatelessWidget {
-  const StudyApp({super.key, this.archive, this.store, this.planStore});
+  const StudyApp({super.key, this.repository});
 
-  final LocalArchive? archive;
-  final LocalProfile? store;
-  final LocalPlanStore? planStore;
+  final StudyRepository? repository;
 
   @override
   Widget build(BuildContext context) {
@@ -33,11 +29,7 @@ class StudyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: StartPage(
-        archive: archive,
-        store: store,
-        planStore: planStore,
-      ),
+      home: StartPage(repository: repository),
     );
   }
 }

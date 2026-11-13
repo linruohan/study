@@ -50,7 +50,7 @@ class PlanCard extends StatelessWidget {
         : (started ? paperOchre : paperStone);
     final name = domain == null
         ? '这个领域暂时没有了'
-        : (band.showsSubjectNames ? domain.name : '去学习');
+        : (domain.displayNameFor(band));
     final hasMenu = onToggleDone != null || onDelete != null;
     final timeLine = '${plan.depth.label} · ${planTimeLabel(plan.startAt, now: now)}'
         '${plan.remind && !plan.done ? ' · 到点提醒' : ''}';

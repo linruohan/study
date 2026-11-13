@@ -213,7 +213,7 @@ class _PlanEditorPageState extends State<PlanEditorPage> {
           const SizedBox(width: 14),
           Expanded(
             child: Text(
-              widget.band.showsSubjectNames ? domain.name : '去看看',
+              domain.displayNameFor(widget.band),
               style: text.titleMedium,
             ),
           ),

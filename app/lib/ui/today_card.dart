@@ -39,7 +39,7 @@ class TodayCard extends StatelessWidget {
           Row(
             children: [
               Text(
-                band.showsSubjectNames ? domain.name : '今天',
+                domain.displayNameFor(band),
                 style: text.bodySmall,
               ),
               const Spacer(),

@@ -1,12 +1,8 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:study_app/archive/local_archive.dart';
-import 'package:study_app/knowledge/age_band.dart';
 import 'package:study_app/main.dart';
-import 'package:study_app/plan/local_plan_store.dart';
-import 'package:study_app/profile/local_profile.dart';
+
+import 'support/study_fixture.dart';
 
 void main() {
   testWidgets('监护人记下对声音有反应，孩子的太阳还在', (WidgetTester tester) async {
@@ -16,17 +12,11 @@ void main() {
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
     });
-    final dir = Directory.systemTemp.createTempSync('lumen_ui_');
-    final archive = LocalArchive(directory: dir);
-    final store = LocalProfile(directory: dir);
-    await store.save(const StudyProfile(band: AgeBand.toddler));
-    await tester.pumpWidget(
-      StudyApp(
-        archive: archive,
-        store: store,
-        planStore: LocalPlanStore(directory: dir),
-      ),
-    );
+
+    final study = await TestStudy.create(band: 'toddler');
+    addTearDown(study.dispose);
+
+    await tester.pumpWidget(StudyApp(repository: study.repository));
     await tester.pumpAndSettle();
 
     // 监护人入口在「我的」里。
@@ -48,8 +38,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('本机记录 1 条'), findsOneWidget);
 
-    final loaded = await LocalArchive(directory: dir).load();
+    final loaded = await study.archiveStore.load();
     expect(loaded.records.single.source, '监护人观察');
-    dir.deleteSync(recursive: true);
+    // 记录已经同步到数据库。
+    expect(study.api.saveCount, 1);
   });
 }

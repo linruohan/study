@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../knowledge/age_band.dart';
 import '../../knowledge/domain.dart';
 import '../../knowledge/knowledge_graph.dart';
 import '../../plan/plan_book.dart';
@@ -15,12 +16,14 @@ class PlanReminder extends StatefulWidget {
     super.key,
     required this.book,
     required this.graph,
+    required this.band,
     required this.onStart,
     required this.child,
   });
 
   final PlanBook book;
   final KnowledgeGraph graph;
+  final AgeBand band;
 
   /// 选「现在开始」后交给首页去导航。
   final void Function(StudyPlan plan, LearningDomain domain) onStart;
@@ -81,7 +84,7 @@ class _PlanReminderState extends State<PlanReminder> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('计划到时间了'),
         content: Text(
-          '${domain?.name ?? '学习'} · ${due.depth.label}\n现在开始吗？',
+          '${domain?.displayNameFor(widget.band) ?? '学习'} · ${due.depth.label}\n现在开始吗？',
         ),
         actions: [
           TextButton(

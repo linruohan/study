@@ -1,0 +1,259 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+/// 接口错误：带上可读信息，启动页直接展示。
+class StudyApiException implements Exception {
+  StudyApiException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// 远程数据接口：知识库整包，以及按设备读写的业务数据整包。
+abstract class StudyApi {
+  Future<Map<String, dynamic>> fetchKnowledge();
+  Future<Map<String, dynamic>> fetchUserData(String deviceId);
+  Future<Map<String, dynamic>> saveUserData(String deviceId, Map<String, dynamic> data);
+
+  Future<List<Map<String, dynamic>>> fetchPointComments({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int position,
+  });
+  Future<Map<String, dynamic>> createPointComment({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int position,
+    required String deviceId,
+    required String body,
+  });
+  Future<List<Map<String, dynamic>>> fetchPointCorrections({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int position,
+  });
+  Future<Map<String, dynamic>> createPointCorrection({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int position,
+    required String deviceId,
+    required String body,
+    String? suggestedText,
+  });
+
+  /// 创建知识分类/子类型（可嵌套）。
+  Future<Map<String, dynamic>> createCategory({
+    required String id,
+    String? parentId,
+    required String name,
+    String question = '',
+    String glyph = '类',
+    String color = '#7A6A54',
+  });
+}
+
+/// 默认实现：访问本地服务。
+///
+/// 地址可以用 `--dart-define=API_BASE_URL=http://...` 覆盖，
+/// 默认连接本机 3000 端口。
+class HttpStudyApi implements StudyApi {
+  HttpStudyApi({String? baseUrl, HttpClient? client})
+      : _baseUrl = (baseUrl ??
+                const String.fromEnvironment(
+                  'API_BASE_URL',
+                  defaultValue: 'http://127.0.0.1:3000',
+                ))
+            .replaceAll(RegExp(r'/+$'), ''),
+        _client = client ?? HttpClient();
+
+  static const _timeout = Duration(seconds: 8);
+
+  final String _baseUrl;
+  final HttpClient _client;
+
+  @override
+  Future<Map<String, dynamic>> fetchKnowledge() {
+    return _request('GET', '/api/knowledge');
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchUserData(String deviceId) {
+    return _request('GET', '/api/devices/$deviceId/data');
+  }
+
+  @override
+  Future<Map<String, dynamic>> saveUserData(
+    String deviceId,
+    Map<String, dynamic> data,
+  ) {
+    return _request('PUT', '/api/devices/$deviceId/data', body: data);
+  }
+
+
+
+  @override
+  Future<Map<String, dynamic>> createCategory({
+    required String id,
+    String? parentId,
+    required String name,
+    String question = '',
+    String glyph = '类',
+    String color = '#7A6A54',
+  }) async {
+    final map = await _request('POST', '/api/knowledge/categories', body: {
+      'id': id,
+      'parentId': parentId,
+      'name': name,
+      'question': question,
+      'glyph': glyph,
+      'color': color,
+    });
+    final category = map['category'];
+    return category is Map ? Map<String, dynamic>.from(category) : map;
+  }
+
+  Map<String, String> _pointQuery({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int position,
+  }) => {
+        'conceptId': conceptId,
+        'ageBandId': ageBandId,
+        'degreeId': degreeId,
+        'position': '$position',
+      };
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchPointComments({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int position,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/knowledge/points/comments').replace(
+      queryParameters: _pointQuery(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, position: position),
+    );
+    final map = await _requestUri('GET', uri);
+    final list = map['comments'];
+    if (list is! List) return const [];
+    return [for (final item in list) if (item is Map) Map<String, dynamic>.from(item)];
+  }
+
+  @override
+  Future<Map<String, dynamic>> createPointComment({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int position,
+    required String deviceId,
+    required String body,
+  }) async {
+    final map = await _request('POST', '/api/knowledge/points/comments', body: {
+      ..._pointQuery(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, position: position),
+      'deviceId': deviceId,
+      'body': body,
+    });
+    final comment = map['comment'];
+    return comment is Map ? Map<String, dynamic>.from(comment) : map;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchPointCorrections({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int position,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/knowledge/points/corrections').replace(
+      queryParameters: _pointQuery(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, position: position),
+    );
+    final map = await _requestUri('GET', uri);
+    final list = map['corrections'];
+    if (list is! List) return const [];
+    return [for (final item in list) if (item is Map) Map<String, dynamic>.from(item)];
+  }
+
+  @override
+  Future<Map<String, dynamic>> createPointCorrection({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int position,
+    required String deviceId,
+    required String body,
+    String? suggestedText,
+  }) async {
+    final payload = <String, Object?>{
+      ..._pointQuery(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, position: position),
+      'deviceId': deviceId,
+      'body': body,
+      'suggestedText': suggestedText,
+    };
+    final map = await _request('POST', '/api/knowledge/points/corrections', body: payload);
+    final correction = map['correction'];
+    return correction is Map ? Map<String, dynamic>.from(correction) : map;
+  }
+
+
+  Future<Map<String, dynamic>> _request(String method, String path, {Object? body}) {
+    return _requestUri(method, Uri.parse('$_baseUrl$path'), body: body);
+  }
+
+  Future<Map<String, dynamic>> _requestUri(String method, Uri uri, {Object? body}) async {
+    try {
+      final request = await _client.openUrl(method, uri).timeout(_timeout);
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      if (body != null) {
+        request.headers.contentType = ContentType.json;
+        request.write(jsonEncode(body));
+      }
+      final response = await request.close().timeout(_timeout);
+      final text = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(_timeout);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StudyApiException(_errorMessage(text, response.statusCode));
+      }
+      final decoded = jsonDecode(text);
+      if (decoded is! Map) {
+        throw StudyApiException('接口返回格式不对');
+      }
+      return Map<String, dynamic>.from(decoded);
+    } on StudyApiException {
+      rethrow;
+    } on SocketException {
+      throw StudyApiException('连不上本地服务，请确认服务已启动');
+    } on TimeoutException {
+      throw StudyApiException('请求超时，请稍后再试');
+    } on FormatException {
+      throw StudyApiException('接口返回的内容无法解析');
+    } on HttpException {
+      throw StudyApiException('网络请求失败，请稍后再试');
+    }
+  }
+
+  /// 从错误响应里取服务端写的说明。
+  String _errorMessage(String body, int statusCode) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map) {
+        final error = decoded['error'];
+        if (error is Map && error['message'] is String) {
+          return error['message'] as String;
+        }
+      }
+    } catch (_) {
+      // 返回体不是 JSON 时用状态码兜底。
+    }
+    return '服务返回错误（$statusCode）';
+  }
+}

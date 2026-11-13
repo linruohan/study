@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../archive/local_archive.dart';
+import '../archive/archive_store.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
 import '../knowledge/domain.dart';
@@ -24,7 +24,7 @@ class DegreeLearningPage extends StatefulWidget {
     required this.degree,
   });
 
-  final LocalArchive archive;
+  final ArchiveStore archive;
   final AgeBand band;
   final LearningDomain domain;
   final Concept concept;
@@ -87,7 +87,7 @@ class _DegreeLearningPageState extends State<DegreeLearningPage> {
     }
     setState(() => _saving = true);
     final saved = await widget.archive.addPractice(
-      subject: widget.domain.name,
+      subject: widget.domain.displayNameFor(widget.band),
       body: pointBody(_points[index]),
       conceptId: widget.concept.id,
       domainId: widget.domain.id,
@@ -107,6 +107,16 @@ class _DegreeLearningPageState extends State<DegreeLearningPage> {
       _checked[index] = true;
       _tier = tierFromCount(count);
     });
+    // 最后一条勾完，给一句完成反馈；不弹窗，不另发奖励。
+    if (_checked.values.every((value) => value) && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '「${widget.degree.label}」的知识点都学完了',
+          ),
+        ),
+      );
+    }
   }
 
   @override

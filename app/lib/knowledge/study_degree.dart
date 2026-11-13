@@ -1,21 +1,20 @@
-/// 学习程度：一个知识按学到的深浅分成三档，每档各有自己的知识点。
-enum StudyDegree {
-  beginner('入门'),
-  familiar('熟悉'),
-  advanced('精通');
+/// 学习程度：一个知识按学到的深浅分成三档。
+///
+/// 名称来自数据库，客户端只保留 id 作为稳定标识。
+class StudyDegree {
+  const StudyDegree({required this.id, required this.label});
 
-  const StudyDegree(this.label);
+  /// 稳定标识，例如 beginner、familiar、advanced。
+  final String id;
 
-  /// 显示名称。
+  /// 显示名称，例如「入门」。
   final String label;
 
-  /// 由存档里的名称找回程度；未知值返回 null。
-  static StudyDegree? fromName(String? name) {
-    for (final degree in StudyDegree.values) {
-      if (degree.name == name) {
-        return degree;
-      }
-    }
-    return null;
+  /// 从知识库接口读取一档程度。
+  factory StudyDegree.fromJson(Map<String, Object?> json) {
+    return StudyDegree(
+      id: json['id'] as String,
+      label: json['label'] as String,
+    );
   }
 }

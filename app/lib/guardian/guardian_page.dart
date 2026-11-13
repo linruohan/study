@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../archive/local_archive.dart';
+import '../archive/archive_store.dart';
 import 'care_guidance.dart';
 import 'care_note.dart';
 import '../ui/theme.dart';
@@ -11,7 +11,7 @@ import '../ui/theme.dart';
 class GuardianPage extends StatefulWidget {
   const GuardianPage({super.key, required this.archive});
 
-  final LocalArchive archive;
+  final ArchiveStore archive;
 
   @override
   State<GuardianPage> createState() => _GuardianPageState();

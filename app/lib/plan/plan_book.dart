@@ -1,15 +1,15 @@
 import 'package:flutter/foundation.dart';
 
-import 'local_plan_store.dart';
+import 'plan_store.dart';
 import 'study_plan.dart';
 
-/// 计划簿：把本机计划读成一份内存清单，所有增删改都从这里走。
+/// 计划簿：把数据库里的计划读成一份内存清单，所有增删改都从这里走。
 ///
-/// 界面只监听它，不用自己排序、也不用每次手工写回本机。
+/// 界面只监听它，不用自己排序、也不用每次手工写回。
 class PlanBook extends ChangeNotifier {
   PlanBook(this._store);
 
-  final LocalPlanStore _store;
+  final PlanStore _store;
   List<StudyPlan> _plans = const [];
 
   /// 全部计划，按开始时间从早到晚。

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../archive/local_archive.dart';
+import '../archive/archive_store.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
 import '../knowledge/domain.dart';
+import '../knowledge/knowledge_catalog.dart';
 import '../knowledge/knowledge_graph.dart';
 import '../knowledge/study_degree.dart';
 import '../learning/learner_state.dart';
@@ -14,11 +15,15 @@ import 'widgets/empty_state.dart';
 import 'widgets/glyph_badge.dart';
 import 'widgets/page_header.dart';
 
+/// 双栏生效的最小宽度；低于它左右面板改为上下布局。
+const _twoPaneMinWidth = 720.0;
+
 /// 规划页：左右结构。左侧按领域分组列出计划里的知识，
 /// 右侧显示选中领域的「学习中」和「未开始」两段。
 ///
 /// 只收知识级计划（从知识详情页按程度加入的）；
 /// 点一条知识进入该程度的知识点学习页。
+/// 窗口较窄时左侧领域栏收成一行横滑，右侧列表占满全宽。
 class PlanView extends StatefulWidget {
   const PlanView({
     super.key,
@@ -28,10 +33,11 @@ class PlanView extends StatefulWidget {
     required this.learner,
     required this.plans,
     required this.onDeleted,
+    required this.onAddConceptPlan,
     required this.onReload,
   });
 
-  final LocalArchive archive;
+  final ArchiveStore archive;
   final KnowledgeGraph graph;
   final AgeBand band;
   final LearnerState learner;
@@ -41,6 +47,9 @@ class PlanView extends StatefulWidget {
 
   /// 删除一条计划后回调首页。
   final void Function(StudyPlan plan) onDeleted;
+
+  /// 把「这个领域还有」的一条知识按入门程度排进计划，由首页写簿。
+  final void Function(Concept concept, LearningDomain domain) onAddConceptPlan;
 
   /// 回到本页时重新读取档案，刷新学习中/未开始的分组。
   final VoidCallback onReload;
@@ -115,13 +124,28 @@ class _PlanViewState extends State<PlanView> {
           band: widget.band,
           domain: domain,
           concept: concept,
-          degree: plan.degree ?? StudyDegree.beginner,
+          degree: plan.degree ?? KnowledgeCatalog.instance.degrees.first,
         ),
       ),
     );
     if (mounted) {
       widget.onReload();
     }
+  }
+
+  /// 把一条还没排进计划的知识加进计划（默认入门程度）。
+  void _addUnplanned(Concept concept, LearningDomain domain) {
+    widget.onAddConceptPlan(
+      concept,
+      domain,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '已加入计划 · ${KnowledgeCatalog.instance.degrees.first.label}',
+        ),
+      ),
+    );
   }
 
   /// 删除一条知识计划，删除前确认一次。
@@ -175,16 +199,32 @@ class _PlanViewState extends State<PlanView> {
                       message: '到「知识库」选一条知识，挑一个学习程度加进来。',
                     ),
                   )
-                : Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(
-                        width: 200,
-                        child: _domainPanel(context, grouped),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(child: _detailPanel(context, grouped)),
-                    ],
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      final wide =
+                          constraints.maxWidth >= _twoPaneMinWidth;
+                      if (wide) {
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(
+                              width: 200,
+                              child: _domainPanel(context, grouped),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(child: _detailPanel(context, grouped)),
+                          ],
+                        );
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _domainStrip(context, grouped),
+                          const SizedBox(height: 12),
+                          Expanded(child: _detailPanel(context, grouped)),
+                        ],
+                      );
+                    },
                   ),
           ),
         ],
@@ -204,52 +244,112 @@ class _PlanViewState extends State<PlanView> {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: paperLine),
       ),
-      child: ListView(
+      child: ListView.builder(
+        key: const PageStorageKey('plan_domains'),
         padding: const EdgeInsets.symmetric(vertical: 10),
-        children: [
-          for (final entry in grouped.entries)
-            InkWell(
-              key: Key('plan_domain_${entry.key.id}'),
-              onTap: () => setState(() => _selectedDomainId = entry.key.id),
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                margin:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                decoration: BoxDecoration(
-                  color: entry.key == selected
-                      ? paperOchre.withValues(alpha: 0.08)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    GlyphBadge(
-                      glyph: entry.key.glyph,
-                      color: entry.key.color,
-                      size: 30,
-                      fontSize: 14,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        widget.band.showsSubjectNames
-                            ? entry.key.name
-                            : '计划里的知识',
-                        style: Theme.of(context).textTheme.titleMedium,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Text(
-                      '${entry.value.length}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
+        itemCount: grouped.length,
+        itemBuilder: (context, index) {
+          final entry = grouped.entries.elementAt(index);
+          return _domainRow(context, entry.key, entry.value, selected);
+        },
+      ),
+    );
+  }
+
+  /// 窄窗口的领域条：一行横滑的小卡，选中的带淡赭底。
+  Widget _domainStrip(
+    BuildContext context,
+    Map<LearningDomain, List<StudyPlan>> grouped,
+  ) {
+    final selected = _selected;
+    return SizedBox(
+      height: 56,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        itemCount: grouped.length,
+        itemBuilder: (context, index) {
+          final entry = grouped.entries.elementAt(index);
+          final domain = entry.key;
+          final isSelected = domain == selected;
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: PaperCard(
+              key: Key('plan_domain_${domain.id}'),
+              onTap: () => setState(() => _selectedDomainId = domain.id),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              color: isSelected
+                  ? paperOchre.withValues(alpha: 0.08)
+                  : paperSurface,
+              child: Row(
+                children: [
+                  GlyphBadge(
+                    glyph: domain.glyph,
+                    color: domain.color,
+                    size: 26,
+                    fontSize: 13,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    domain.displayNameFor(widget.band),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${entry.value.length}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
               ),
             ),
-        ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// 一行领域分组：符号、名称、条数；选中时淡赭底。
+  Widget _domainRow(
+    BuildContext context,
+    LearningDomain domain,
+    List<StudyPlan> plans,
+    LearningDomain? selected,
+  ) {
+    return InkWell(
+      key: Key('plan_domain_row_${domain.id}'),
+      onTap: () => setState(() => _selectedDomainId = domain.id),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: domain == selected
+              ? paperOchre.withValues(alpha: 0.08)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            GlyphBadge(
+              glyph: domain.glyph,
+              color: domain.color,
+              size: 30,
+              fontSize: 14,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                domain.displayNameFor(widget.band),
+                style: Theme.of(context).textTheme.titleMedium,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Text(
+              '${plans.length}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -271,7 +371,7 @@ class _PlanViewState extends State<PlanView> {
         continue;
       }
       if (widget.learner.tierOf(concept.id) != null) {
-        learning.add((plan, concept, plan.degree ?? StudyDegree.beginner));
+        learning.add((plan, concept, plan.degree ?? KnowledgeCatalog.instance.degrees.first));
       }
     }
     final notStarted = <(StudyPlan, Concept, StudyDegree)>[];
@@ -281,7 +381,7 @@ class _PlanViewState extends State<PlanView> {
         continue;
       }
       if (widget.learner.tierOf(concept.id) == null) {
-        notStarted.add((plan, concept, plan.degree ?? StudyDegree.beginner));
+        notStarted.add((plan, concept, plan.degree ?? KnowledgeCatalog.instance.degrees.first));
       }
     }
     final unplanned = _unplannedOf(domain, plans);
@@ -298,7 +398,7 @@ class _PlanViewState extends State<PlanView> {
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
             child: Text(
-              widget.band.showsSubjectNames ? domain.name : '这一组的知识',
+              domain.displayNameFor(widget.band),
               style: text.headlineSmall,
             ),
           ),
@@ -312,39 +412,88 @@ class _PlanViewState extends State<PlanView> {
                       message: '左侧选中一个领域，右边就会列出它的知识。',
                     ),
                   )
-                : ListView(
+                : ListView.builder(
+                    key: PageStorageKey('plan_detail_${domain.id}'),
                     padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
-                    children: [
-                      if (learning.isNotEmpty) ...[
-                        _groupTitle(context, '学习中', '${learning.length} 条'),
-                        const SizedBox(height: 10),
-                        for (final entry in learning)
-                          _planCard(context, entry, learning: true),
-                        const SizedBox(height: 14),
-                      ],
-                      if (notStarted.isNotEmpty) ...[
-                        _groupTitle(context, '未开始', '${notStarted.length} 条'),
-                        const SizedBox(height: 10),
-                        for (final entry in notStarted)
-                          _planCard(context, entry, learning: false),
-                        const SizedBox(height: 14),
-                      ],
-                      if (unplanned.isNotEmpty) ...[
-                        _groupTitle(
-                          context,
-                          '这个领域还有',
-                          '${unplanned.length} 条没排进来',
-                        ),
-                        const SizedBox(height: 10),
-                        for (final concept in unplanned)
-                          _unplannedCard(context, concept, domain),
-                      ],
-                    ],
+                    itemCount: learning.length +
+                        (learning.isEmpty ? 0 : 1) +
+                        notStarted.length +
+                        (notStarted.isEmpty ? 0 : 1) +
+                        unplanned.length +
+                        (unplanned.isEmpty ? 0 : 1),
+                    itemBuilder: (context, index) {
+                      final entry = _detailRow(
+                        index,
+                        learning,
+                        notStarted,
+                        unplanned,
+                      );
+                      if (entry == null) {
+                        return const SizedBox.shrink();
+                      }
+                      return switch (entry) {
+                        _TitleRow(:final title, :final note) => Padding(
+                            padding: const EdgeInsets.only(top: 2, bottom: 10),
+                            child: _groupTitle(context, title, note),
+                          ),
+                        _PlanRow(:final entry) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _planCard(context, entry, learning: true),
+                          ),
+                        _NotStartedRow(:final entry) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _planCard(context, entry, learning: false),
+                          ),
+                        _UnplannedRow(:final concept) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _unplannedCard(context, concept, domain),
+                          ),
+                      };
+                    },
                   ),
           ),
         ],
       ),
     );
+  }
+
+  /// 把平铺下标映射到一行：标题行、计划卡或「这个领域还有」的卡。
+  _DetailRow? _detailRow(
+    int index,
+    List<(StudyPlan, Concept, StudyDegree)> learning,
+    List<(StudyPlan, Concept, StudyDegree)> notStarted,
+    List<Concept> unplanned,
+  ) {
+    if (learning.isNotEmpty) {
+      if (index == 0) {
+        return _TitleRow('学习中', '${learning.length} 条');
+      }
+      index -= 1;
+      if (index < learning.length) {
+        return _PlanRow(learning[index]);
+      }
+      index -= learning.length;
+    }
+    if (notStarted.isNotEmpty) {
+      if (index == 0) {
+        return _TitleRow('未开始', '${notStarted.length} 条');
+      }
+      index -= 1;
+      if (index < notStarted.length) {
+        return _NotStartedRow(notStarted[index]);
+      }
+      index -= notStarted.length;
+    }
+    if (unplanned.isNotEmpty) {
+      if (index == 0) {
+        return _TitleRow('这个领域还有', '${unplanned.length} 条没排进来');
+      }
+      index -= 1;
+      if (index < unplanned.length) {
+        return _UnplannedRow(unplanned[index]);
+      }
+    }
+    return null;
   }
 
   /// 段标题：名称加数量合并成一行，避免和卡片上的状态标签重名。
@@ -402,7 +551,7 @@ class _PlanViewState extends State<PlanView> {
     );
   }
 
-  /// 「这个领域还有」的卡片：还没排进计划的知识，只看不跳转。
+  /// 「这个领域还有」的卡片：一键按入门程度排进计划。
   Widget _unplannedCard(
     BuildContext context,
     Concept concept,
@@ -412,7 +561,7 @@ class _PlanViewState extends State<PlanView> {
     final variant = concept.variantFor(widget.band);
     return PaperCard(
       key: Key('plan_unplanned_${concept.id}'),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
       child: Row(
         children: [
           GlyphBadge(
@@ -424,7 +573,12 @@ class _PlanViewState extends State<PlanView> {
           ),
           const SizedBox(width: 12),
           Expanded(child: Text(variant.topic, style: text.titleMedium)),
-          MasteryPill(label: '未排进计划', color: paperInkSoft),
+          TextButton.icon(
+            key: Key('plan_add_${concept.id}'),
+            onPressed: () => _addUnplanned(concept, domain),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('排进来'),
+          ),
         ],
       ),
     );
@@ -439,4 +593,38 @@ class _PlanViewState extends State<PlanView> {
       icon: const Icon(Icons.more_vert, size: 20, color: paperInkSoft),
     );
   }
+}
+
+/// 详情列表的一行：标题、学习中的计划、未开始的计划或没排进来的知识。
+sealed class _DetailRow {
+  const _DetailRow();
+}
+
+/// 详情列表里的一行标题。
+class _TitleRow extends _DetailRow {
+  const _TitleRow(this.title, this.note);
+
+  final String title;
+  final String note;
+}
+
+/// 详情列表里的一条学习中的计划。
+class _PlanRow extends _DetailRow {
+  const _PlanRow(this.entry);
+
+  final (StudyPlan, Concept, StudyDegree) entry;
+}
+
+/// 详情列表里的一条未开始的计划。
+class _NotStartedRow extends _DetailRow {
+  const _NotStartedRow(this.entry);
+
+  final (StudyPlan, Concept, StudyDegree) entry;
+}
+
+/// 详情列表里的一条还没排进计划的知识。
+class _UnplannedRow extends _DetailRow {
+  const _UnplannedRow(this.concept);
+
+  final Concept concept;
 }

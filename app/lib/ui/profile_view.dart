@@ -24,6 +24,7 @@ class ProfileView extends StatelessWidget {
     required this.onChangeBand,
     required this.onGuardian,
     required this.onExport,
+    required this.onSage,
   });
 
   final KnowledgeGraph graph;
@@ -35,6 +36,7 @@ class ProfileView extends StatelessWidget {
   final VoidCallback onChangeBand;
   final VoidCallback onGuardian;
   final VoidCallback onExport;
+  final VoidCallback onSage;
 
   @override
   Widget build(BuildContext context) {
@@ -79,18 +81,30 @@ class ProfileView extends StatelessWidget {
         const SizedBox(height: 6),
         Text('没达成的也会写清条件，知道下一步往哪走。', style: text.bodySmall),
         const SizedBox(height: 12),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: achievements.length,
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 230,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 1.5,
-          ),
-          itemBuilder: (context, index) =>
-              _badgeCard(context, achievements[index]),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth >= 480) {
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: achievements.length,
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 230,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: 1.5,
+                ),
+                itemBuilder: (context, index) =>
+                    _badgeCard(context, achievements[index]),
+              );
+            }
+            return Column(
+              children: [
+                for (final achievement in achievements)
+                  _badgeCard(context, achievement),
+              ],
+            );
+          },
         ),
         const SizedBox(height: 22),
         const SectionHeader(title: '设置'),
@@ -105,6 +119,14 @@ class ProfileView extends StatelessWidget {
                 title: '换年龄档',
                 subtitle: '当前是 ${band.label}',
                 onTap: onChangeBand,
+              ),
+              const Divider(),
+              SettingRow(
+                key: const Key('profile_sage'),
+                icon: Icons.auto_stories_outlined,
+                title: '智者 · 添加知识',
+                subtitle: '提交知识或知识点，审批后知识库里能搜到',
+                onTap: onSage,
               ),
               const Divider(),
               SettingRow(
@@ -187,7 +209,7 @@ class ProfileView extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(domain.name, style: text.titleMedium),
+                Text(domain.displayNameFor(band), style: text.titleMedium),
                 const SizedBox(height: 4),
                 Text(
                   '熟练 ${standing.ready}/${standing.total} 步'
@@ -195,7 +217,6 @@ class ProfileView extends StatelessWidget {
                   style: text.bodySmall,
                 ),
                 const SizedBox(height: 8),
-                // 熟练步数占本档总步数的比例，一眼看出离下一级还有多远。
                 ClipRRect(
                   borderRadius: BorderRadius.circular(2),
                   child: LinearProgressIndicator(

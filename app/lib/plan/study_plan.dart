@@ -1,3 +1,4 @@
+import '../knowledge/knowledge_catalog.dart';
 import '../knowledge/study_degree.dart';
 
 /// 学习计划的方向：先简单了解，还是走完整条阶梯深入学习。
@@ -40,7 +41,7 @@ enum PlanDepth {
 /// - 知识级计划（[conceptId] 不为 null）：从知识详情页按学习程度加入，
 ///   在「规划」页按领域分组列出，点开进入该程度的知识点学习页。
 ///
-/// 计划只存在本机，不上传；到点提醒只在应用打开时出现。
+/// 计划保存在数据库里，按设备区分；到点提醒只在应用打开时出现。
 class StudyPlan {
   const StudyPlan({
     required this.id,
@@ -121,7 +122,7 @@ class StudyPlan {
       'depth': depth.name,
       'startAt': startAt.toIso8601String(),
       if (conceptId != null) 'conceptId': conceptId,
-      if (degree != null) 'degree': degree!.name,
+      if (degree != null) 'degree': degree!.id,
       'remind': remind,
       'done': done,
       if (remindedAt != null) 'remindedAt': remindedAt!.toIso8601String(),
@@ -145,7 +146,9 @@ class StudyPlan {
       domainId: domainId,
       depth: depth,
       conceptId: json['conceptId'] as String?,
-      degree: StudyDegree.fromName(json['degree'] as String?),
+      degree: KnowledgeCatalog.maybeInstance?.degreeById(
+        json['degree'] as String?,
+      ),
       startAt: startAt,
       remind: json['remind'] as bool? ?? true,
       done: json['done'] as bool? ?? false,

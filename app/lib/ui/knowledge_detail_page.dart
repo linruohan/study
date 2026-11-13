@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../archive/local_archive.dart';
+import '../archive/archive_store.dart';
+import '../data/study_repository.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
 import '../knowledge/domain.dart';
+import '../knowledge/knowledge_catalog.dart';
 import '../knowledge/knowledge_graph.dart';
 import '../knowledge/study_degree.dart';
 import '../learning/learner_state.dart';
@@ -11,14 +13,12 @@ import '../plan/study_plan.dart';
 import 'theme.dart';
 import 'widgets/glyph_badge.dart';
 
-/// 知识详情页：知识简介，加入门、熟悉、精通三个程度的知识点。
-///
-/// 每个程度 tab 里列出该程度的知识点；底部按当前看的程度
-/// 把这个知识加进「我的计划」。已经在计划里的程度不再重复添加。
+/// 知识详情页：知识简介、按程度查看知识点与章节，支持加入计划、评论与纠错。
 class KnowledgeDetailPage extends StatefulWidget {
   const KnowledgeDetailPage({
     super.key,
     required this.archive,
+    required this.repository,
     required this.graph,
     required this.band,
     required this.domain,
@@ -28,13 +28,14 @@ class KnowledgeDetailPage extends StatefulWidget {
     required this.onAddPlan,
   });
 
-  final LocalArchive archive;
+  final ArchiveStore archive;
+  final StudyRepository repository;
   final KnowledgeGraph graph;
   final AgeBand band;
   final LearningDomain domain;
   final Concept concept;
 
-  /// 进入时的学习者状态；学完一步后会重新读取档案。
+  /// 进入时的学习者状态。
   final LearnerState learner;
 
   /// 本机全部计划，用来判断这个知识是否已在计划中。
@@ -49,11 +50,10 @@ class KnowledgeDetailPage extends StatefulWidget {
 
 class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     with SingleTickerProviderStateMixin {
-  /// 进入时的掌握状态；加入计划不改变它，所以可以直接 final。
   late final LearnerState _learner = widget.learner;
 
   late final TabController _tabs = TabController(
-    length: StudyDegree.values.length,
+    length: KnowledgeCatalog.instance.degrees.length,
     vsync: this,
   )..addListener(() {
       if (mounted) {
@@ -61,10 +61,8 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
       }
     });
 
-  /// 当前 tab 对应的学习程度。
-  StudyDegree get _degree => StudyDegree.values[_tabs.index];
+  StudyDegree get _degree => KnowledgeCatalog.instance.degrees[_tabs.index];
 
-  /// 这个知识已经加进计划的程度。
   Set<StudyDegree> get _plannedDegrees {
     return {
       for (final plan in widget.plans)
@@ -73,13 +71,20 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     };
   }
 
+  String _creatorOfConcept() {
+    final catalog = KnowledgeCatalog.maybeInstance;
+    if (catalog == null) {
+      return '';
+    }
+    return catalog.sageCredits.creatorOfConcept(widget.concept.id);
+  }
+
   @override
   void dispose() {
     _tabs.dispose();
     super.dispose();
   }
 
-  /// 按当前程度把这个知识加进计划；已加过的程度给一句确认。
   Future<void> _addToPlan() async {
     final degree = _degree;
     if (_plannedDegrees.contains(degree)) {
@@ -114,16 +119,15 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     final variant = widget.concept.variantFor(widget.band);
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.band.showsSubjectNames ? widget.domain.name : '这一步',
-        ),
+        title: Text(widget.domain.displayNameFor(widget.band)),
         bottom: TabBar(
           controller: _tabs,
           labelColor: paperOchre,
           unselectedLabelColor: paperInkSoft,
           indicatorColor: paperOchre,
           tabs: [
-            for (final degree in StudyDegree.values) Tab(text: degree.label),
+            for (final degree in KnowledgeCatalog.instance.degrees)
+              Tab(text: degree.label),
           ],
         ),
       ),
@@ -131,7 +135,7 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
         child: TabBarView(
           controller: _tabs,
           children: [
-            for (final degree in StudyDegree.values)
+            for (final degree in KnowledgeCatalog.instance.degrees)
               _degreeTab(context, degree, variant),
           ],
         ),
@@ -149,7 +153,6 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     );
   }
 
-  /// 一个程度 tab：顶部掌握状态，中间知识点列表。
   Widget _degreeTab(
     BuildContext context,
     StudyDegree degree,
@@ -159,6 +162,8 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     final tier = _learner.tierOf(widget.concept.id);
     final practiceCount = _learner.practiceCount(widget.concept.id);
     final planned = _plannedDegrees.contains(degree);
+    final creator = _creatorOfConcept();
+    final points = variant.pointsFor(degree);
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       children: [
@@ -180,6 +185,20 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
                   Text(variant.topic, style: text.headlineSmall),
                   const SizedBox(height: 6),
                   Text(variant.note ?? variant.doing, style: text.bodySmall),
+                  if (creator.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(Icons.auto_stories_outlined,
+                            size: 14, color: paperOchre),
+                        const SizedBox(width: 4),
+                        Text(
+                          '智者：$creator',
+                          style: text.bodySmall?.copyWith(color: paperOchre),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -203,28 +222,350 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
         const SizedBox(height: 18),
         Text('「${degree.label}」要学的知识点', style: text.titleMedium),
         const SizedBox(height: 10),
-        for (final point in variant.pointsFor(degree)) ...[
-          PaperCard(
-            key: Key('point_${degree.name}_${variant.pointsFor(degree).indexOf(point)}'),            padding: const EdgeInsets.all(14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.check_circle_outline,
-                    size: 20, color: paperOchre),
-                const SizedBox(width: 10),
-                Expanded(child: Text(point, style: text.bodyMedium)),
-              ],
-            ),
-          ),
+        for (var i = 0; i < points.length; i++) ...[
+          _pointCard(context, degree, variant, points[i], i + 1),
           const SizedBox(height: 10),
         ],
         const SizedBox(height: 8),
         Text(
-          '加入计划后，在「规划」页按领域分组学习这些知识点。',
+          '加入计划后，可在「规划」页按领域学习。章节是最基础的知识单元；评论与纠错提交后可参与审核与积分。',
           textAlign: TextAlign.center,
           style: text.bodySmall,
         ),
       ],
+    );
+  }
+
+  Widget _pointCard(
+    BuildContext context,
+    StudyDegree degree,
+    ConceptVariant variant,
+    String point,
+    int position,
+  ) {
+    final text = Theme.of(context).textTheme;
+    final chapters = variant.chaptersFor(degree, position);
+    return PaperCard(
+      key: Key('point_${degree.id}_${position - 1}'),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.check_circle_outline, size: 20, color: paperOchre),
+              const SizedBox(width: 10),
+              Expanded(child: Text(point, style: text.bodyMedium)),
+            ],
+          ),
+          if (chapters.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text('章节', style: text.labelMedium?.copyWith(color: paperInkSoft)),
+            const SizedBox(height: 6),
+            for (var c = 0; c < chapters.length; c++) ...[
+              _chapterTile(context, chapters[c], c + 1),
+              if (c != chapters.length - 1) const SizedBox(height: 6),
+            ],
+          ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                key: Key('point_comments_${degree.id}_${position - 1}'),
+                onPressed: () => _openComments(context, degree, point, position),
+                icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                label: const Text('评论'),
+              ),
+              OutlinedButton.icon(
+                key: Key('point_correction_${degree.id}_${position - 1}'),
+                onPressed: () => _openCorrection(context, degree, point, position),
+                icon: const Icon(Icons.edit_note_outlined, size: 16),
+                label: const Text('纠错'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chapterTile(BuildContext context, KnowledgeChapter chapter, int index) {
+    final text = Theme.of(context).textTheme;
+    final content = chapter.content?.trim();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: paperOchre.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: paperLine),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('$index. ${chapter.title}', style: text.bodySmall?.copyWith(color: paperInk)),
+          if (content != null && content.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(content, style: text.bodySmall),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openComments(BuildContext context, StudyDegree degree, String point, int position) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => _PointCommentsSheet(
+        repository: widget.repository,
+        band: widget.band,
+        concept: widget.concept,
+        degree: degree,
+        position: position,
+        pointText: point,
+      ),
+    );
+  }
+
+  Future<void> _openCorrection(BuildContext context, StudyDegree degree, String point, int position) async {
+    final bodyController = TextEditingController();
+    final suggestionController = TextEditingController();
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('提交纠错'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(point, style: Theme.of(ctx).textTheme.bodySmall),
+              const SizedBox(height: 12),
+              TextField(
+                controller: bodyController,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: '问题说明',
+                  hintText: '请描述需要纠正的内容',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: suggestionController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: '建议内容（可选）',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () async {
+              final text = bodyController.text.trim();
+              if (text.isEmpty) return;
+              try {
+                await widget.repository.createPointCorrection(
+                  conceptId: widget.concept.id,
+                  ageBandId: widget.band.id,
+                  degreeId: degree.id,
+                  position: position,
+                  body: text,
+                  suggestedText: suggestionController.text.trim().isEmpty
+                      ? null
+                      : suggestionController.text.trim(),
+                );
+                if (ctx.mounted) Navigator.of(ctx).pop(true);
+              } catch (e) {
+                if (!ctx.mounted) return;
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  SnackBar(content: Text('提交失败：$e')),
+                );
+              }
+            },
+            child: const Text('提交'),
+          ),
+        ],
+      ),
+    );
+    bodyController.dispose();
+    suggestionController.dispose();
+    if (submitted == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('纠错已提交，审核通过后可获得积分')),
+      );
+    }
+  }
+}
+
+class _PointCommentsSheet extends StatefulWidget {
+  const _PointCommentsSheet({
+    required this.repository,
+    required this.band,
+    required this.concept,
+    required this.degree,
+    required this.position,
+    required this.pointText,
+  });
+
+  final StudyRepository repository;
+  final AgeBand band;
+  final Concept concept;
+  final StudyDegree degree;
+  final int position;
+  final String pointText;
+
+  @override
+  State<_PointCommentsSheet> createState() => _PointCommentsSheetState();
+}
+
+class _PointCommentsSheetState extends State<_PointCommentsSheet> {
+  late Future<List<Map<String, dynamic>>> _future;
+  final _controller = TextEditingController();
+  var _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.repository.fetchPointComments(
+      conceptId: widget.concept.id,
+      ageBandId: widget.band.id,
+      degreeId: widget.degree.id,
+      position: widget.position,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _reload() async {
+    setState(() {
+      _future = widget.repository.fetchPointComments(
+        conceptId: widget.concept.id,
+        ageBandId: widget.band.id,
+        degreeId: widget.degree.id,
+        position: widget.position,
+      );
+    });
+  }
+
+  Future<void> _send() async {
+    final body = _controller.text.trim();
+    if (body.isEmpty || _sending) return;
+    setState(() => _sending = true);
+    try {
+      await widget.repository.createPointComment(
+        conceptId: widget.concept.id,
+        ageBandId: widget.band.id,
+        degreeId: widget.degree.id,
+        position: widget.position,
+        body: body,
+      );
+      _controller.clear();
+      await _reload();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('发送失败：$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.7,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('知识点评论', style: text.titleMedium),
+              const SizedBox(height: 4),
+              Text(widget.pointText, style: text.bodySmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 12),
+              Expanded(
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _future,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: paperOchre));
+                    }
+                    if (snapshot.hasError) {
+                      return Center(child: Text('加载失败：${snapshot.error}', style: text.bodySmall));
+                    }
+                    final items = snapshot.data ?? const [];
+                    if (items.isEmpty) {
+                      return Center(child: Text('还没有评论，欢迎补充。', style: text.bodySmall));
+                    }
+                    return ListView.separated(
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final item = items[index];
+                        final body = item['body'] as String? ?? '';
+                        final at = item['createdAt'] as String? ?? '';
+                        return PaperCard(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(body, style: text.bodyMedium),
+                              if (at.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(at, style: text.bodySmall?.copyWith(color: paperInkSoft)),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      minLines: 1,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        hintText: '写一条评论…',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _sending ? null : _send,
+                    child: _sending
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('发送'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

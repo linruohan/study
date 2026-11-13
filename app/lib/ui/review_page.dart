@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../archive/local_archive.dart';
+import '../archive/archive_store.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
 import '../knowledge/domain.dart';
@@ -19,7 +19,7 @@ class ReviewPage extends StatefulWidget {
     this.maxDepth,
   });
 
-  final LocalArchive archive;
+  final ArchiveStore archive;
   final AgeBand band;
   final LearningDomain domain;
 
@@ -39,9 +39,9 @@ class _ReviewPageState extends State<ReviewPage> {
 
   /// 低龄档需要监护人确认，高年龄由本人确认。
   bool get _needsGuardian {
-    return widget.band == AgeBand.toddler ||
-        widget.band == AgeBand.lowerPrimary ||
-        widget.band == AgeBand.upperPrimary;
+    return widget.band.id == 'toddler' ||
+        widget.band.id == 'lower_primary' ||
+        widget.band.id == 'upper_primary';
   }
 
   @override
@@ -88,7 +88,7 @@ class _ReviewPageState extends State<ReviewPage> {
     setState(() => _submitting = true);
     for (final concept in _learned) {
       await widget.archive.addPractice(
-        subject: widget.domain.name,
+        subject: widget.domain.displayNameFor(widget.band),
         body: '完成小测：${concept.variantFor(widget.band).topic}',
         conceptId: concept.id,
         domainId: widget.domain.id,

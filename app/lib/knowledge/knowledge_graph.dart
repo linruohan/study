@@ -1,58 +1,69 @@
 import 'age_band.dart';
-import 'catalog/language.dart';
-import 'catalog/life.dart';
-import 'catalog/math.dart';
 import 'concept.dart';
 import 'domain.dart';
 import 'taxonomy.dart';
 
-/// 本机知识图谱：替代服务端的图谱中台，只保存这一台设备够用的关系与查询。
+/// 知识图谱：把数据库返回的领域与分类包成界面需要的查询。
 ///
-/// 服务端的 Neo4j、消息队列不引入。等以后需要多端同步时，
-/// 只要让远端实现同样这几个查询，界面和路径算法不用改。
+/// 客户端只保留查询逻辑，不再内置任何领域或分类数据。
 class KnowledgeGraph {
-  const KnowledgeGraph({required this.domains});
-
-  /// 默认接入的领域。新增领域只加一个 catalog 文件并登记在这里。
-  static const defaults = KnowledgeGraph(
-    domains: [languageDomain, mathDomain, lifeDomain],
-  );
+  KnowledgeGraph({required this.domains, required this.categories});
 
   /// 已接入的领域，顺序就是引导路径的默认优先顺序。
   final List<LearningDomain> domains;
+
+  /// 九类分类，顺序来自数据库。
+  final List<ScholarCategory> categories;
 
   /// 本档有内容的领域。
   List<LearningDomain> domainsFor(AgeBand band) {
     return domains.where((domain) => domain.hasContent(band)).toList();
   }
 
-  /// 九类分类在本档的视图：有内容的领域挂在各自的类别下。
-  ///
-  /// 类别顺序固定为九类的注册顺序；没有内容的类别仍然出现，
-  /// 让树的形状稳定，界面上给「还没有知识」的空态。
-  List<({ScholarCategory category, List<LearningDomain> domains})>
-      categoriesFor(AgeBand band) {
-    final grouped = <ScholarCategory, List<LearningDomain>>{};
-    for (final domain in domainsFor(band)) {
-      grouped.putIfAbsent(domain.category, () => []).add(domain);
-    }
-    return [
-      for (final category in nineCategories)
-        (
-          category: category,
-          domains: grouped[category] ?? const [],
-        ),
-    ];
-  }
+  /// 九大基类/根分类（无父级）。
+  List<ScholarCategory> get rootCategories =>
+      categories.where((c) => c.parentId == null).toList();
 
-  /// 某一类别下本档有内容的领域。
-  List<LearningDomain> domainsInCategory(
+  /// 某分类的直接子类型。
+  List<ScholarCategory> childrenOf(String categoryId) =>
+      categories.where((c) => c.parentId == categoryId).toList();
+
+  /// 某分类下直接挂载的、在本档可见的领域。
+  List<LearningDomain> directDomainsInCategory(
     ScholarCategory category,
     AgeBand band,
   ) {
     return domainsFor(band)
         .where((domain) => domain.category.id == category.id)
         .toList();
+  }
+
+  /// 九类分类在本档的视图（兼容旧接口）：包含所有分类及其直接领域。
+  List<({ScholarCategory category, List<LearningDomain> domains})>
+      categoriesFor(AgeBand band) {
+    return [
+      for (final category in categories)
+        (
+          category: category,
+          domains: directDomainsInCategory(category, band),
+        ),
+    ];
+  }
+
+  /// 某一类别下本档有内容的领域（含直接挂载）。
+  List<LearningDomain> domainsInCategory(
+    ScholarCategory category,
+    AgeBand band,
+  ) {
+    return directDomainsInCategory(category, band);
+  }
+
+  /// 按 id 找分类。
+  ScholarCategory? categoryById(String id) {
+    for (final category in categories) {
+      if (category.id == id) return category;
+    }
+    return null;
   }
 
   /// 按 id 找领域，找不到返回 null。
@@ -93,10 +104,7 @@ class KnowledgeGraph {
     return true;
   }
 
-  /// 今日下一步：关注领域优先，其次按领域注册顺序和深浅。
-  ///
-  /// 已经到达熟练的不再占今日任务；没解锁的等前置。
-  /// 全部走完返回 null。
+  /// 今日下一步：关注领域优先，其次按领域顺序和深浅。
   Concept? nextStep(
     AgeBand band,
     Set<String> ready, {
@@ -124,7 +132,6 @@ class KnowledgeGraph {
       if (byRank != 0) {
         return byRank;
       }
-      // 深浅优先于领域顺序：今日先补最浅的一格，不按学科轮流。
       final byDepth = a.concept.depth.compareTo(b.concept.depth);
       if (byDepth != 0) {
         return byDepth;
@@ -140,6 +147,8 @@ class KnowledgeGraph {
 
   /// 某领域在本档已到达熟练或掌握的概念数，用来显示进度。
   int readyCount(LearningDomain domain, AgeBand band, Set<String> ready) {
-    return domain.conceptsFor(band).where((concept) => ready.contains(concept.id)).length;
+    return domain.conceptsFor(band)
+        .where((concept) => ready.contains(concept.id))
+        .length;
   }
 }

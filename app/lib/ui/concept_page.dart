@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../archive/local_archive.dart';
+import '../archive/archive_store.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
 import '../knowledge/domain.dart';
@@ -20,7 +20,7 @@ class ConceptPage extends StatefulWidget {
     required this.concept,
   });
 
-  final LocalArchive archive;
+  final ArchiveStore archive;
   final AgeBand band;
   final LearningDomain domain;
   final Concept concept;
@@ -43,7 +43,7 @@ class _ConceptPageState extends State<ConceptPage> {
     }
     setState(() => _saving = true);
     final saved = await widget.archive.addPractice(
-      subject: widget.domain.name,
+      subject: widget.domain.displayNameFor(widget.band),
       body: _variant.doing,
       conceptId: widget.concept.id,
       domainId: widget.domain.id,
@@ -65,7 +65,7 @@ class _ConceptPageState extends State<ConceptPage> {
     final text = Theme.of(context).textTheme;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.band.showsSubjectNames ? widget.domain.name : '这一步'),
+        title: Text(widget.domain.displayNameFor(widget.band)),
       ),
       body: SafeArea(
         child: ListView(
