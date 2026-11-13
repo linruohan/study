@@ -7,13 +7,16 @@ import 'study_degree.dart';
 /// 幼儿、小学、中学、成人各写自己那一行，不重复造概念。
 /// 知识点下的章节（最基础知识单元）。
 class KnowledgeChapter {
-  const KnowledgeChapter({required this.title, this.content});
+  const KnowledgeChapter({this.position, required this.title, this.content});
 
+  final int? position;
   final String title;
   final String? content;
 
   factory KnowledgeChapter.fromJson(Map<String, Object?> json) {
+    final pos = json['chapterPosition'] ?? json['position'];
     return KnowledgeChapter(
+      position: pos is num ? pos.toInt() : null,
       title: json['title'] as String? ?? '',
       content: json['content'] as String?,
     );

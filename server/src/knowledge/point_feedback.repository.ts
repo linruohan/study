@@ -1,13 +1,13 @@
 import { pool } from '../db.js';
 import { HttpError } from '../http/errors.js';
-import type { CommentDto, CorrectionDto, PointRef } from './point_feedback.types.js';
+import type { CommentDto, CorrectionDto, CreditDto, PointRef } from './point_feedback.types.js';
 
 interface CommentRow {
   id: string;
   concept_id: string;
   age_band_id: string;
   degree_id: string;
-  position: number;
+  point_position: number;
   device_id: string;
   body: string;
   created_at: Date;
@@ -18,7 +18,7 @@ interface CorrectionRow {
   concept_id: string;
   age_band_id: string;
   degree_id: string;
-  position: number;
+  point_position: number;
   device_id: string;
   body: string;
   suggested_text: string | null;
@@ -55,7 +55,7 @@ async function touchDevice(
 async function assertPointExists(ref: PointRef): Promise<void> {
   const result = await pool.query(
     `SELECT 1 FROM knowledge_variant_points
-      WHERE concept_id = $1 AND age_band_id = $2 AND degree_id = $3 AND position = $4`,
+      WHERE concept_id = $1 AND age_band_id = $2 AND degree_id = $3 AND point_position = $4`,
     [ref.conceptId, ref.ageBandId, ref.degreeId, ref.position],
   );
   if (result.rowCount === 0) {
@@ -63,15 +63,18 @@ async function assertPointExists(ref: PointRef): Promise<void> {
   }
 }
 
-export async function listComments(ref: PointRef): Promise<CommentDto[]> {
+export async function listComments(ref: PointRef, limit = 50, offset = 0): Promise<CommentDto[]> {
   await assertPointExists(ref);
+  const safeLimit = Math.min(Math.max(limit, 1), 200);
+  const safeOffset = Math.max(offset, 0);
   try {
     const result = await pool.query<CommentRow>(
-      `SELECT id, concept_id, age_band_id, degree_id, position, device_id, body, created_at
+      `SELECT id, concept_id, age_band_id, degree_id, point_position, device_id, body, created_at
          FROM knowledge_point_comments
-        WHERE concept_id = $1 AND age_band_id = $2 AND degree_id = $3 AND position = $4
-        ORDER BY created_at DESC`,
-      [ref.conceptId, ref.ageBandId, ref.degreeId, ref.position],
+        WHERE concept_id = $1 AND age_band_id = $2 AND degree_id = $3 AND point_position = $4
+        ORDER BY created_at DESC
+        LIMIT $5 OFFSET $6`,
+      [ref.conceptId, ref.ageBandId, ref.degreeId, ref.position, safeLimit, safeOffset],
     );
     return result.rows.map(toCommentDto);
   } catch (error) {
@@ -90,9 +93,9 @@ export async function createComment(ref: PointRef, deviceId: string, body: strin
     await touchDevice(client, deviceId);
     const result = await client.query<CommentRow>(
       `INSERT INTO knowledge_point_comments
-         (concept_id, age_band_id, degree_id, position, device_id, body)
+         (concept_id, age_band_id, degree_id, point_position, device_id, body)
        VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, concept_id, age_band_id, degree_id, position, device_id, body, created_at`,
+       RETURNING id, concept_id, age_band_id, degree_id, point_position, device_id, body, created_at`,
       [ref.conceptId, ref.ageBandId, ref.degreeId, ref.position, deviceId, body],
     );
     await client.query('COMMIT');
@@ -105,16 +108,19 @@ export async function createComment(ref: PointRef, deviceId: string, body: strin
   }
 }
 
-export async function listCorrections(ref: PointRef): Promise<CorrectionDto[]> {
+export async function listCorrections(ref: PointRef, limit = 50, offset = 0): Promise<CorrectionDto[]> {
   await assertPointExists(ref);
+  const safeLimit = Math.min(Math.max(limit, 1), 200);
+  const safeOffset = Math.max(offset, 0);
   try {
     const result = await pool.query<CorrectionRow>(
-      `SELECT id, concept_id, age_band_id, degree_id, position, device_id, body, suggested_text,
+      `SELECT id, concept_id, age_band_id, degree_id, point_position, device_id, body, suggested_text,
               status, reviewed_at, reviewer_device_id, points_awarded, created_at
          FROM knowledge_point_corrections
-        WHERE concept_id = $1 AND age_band_id = $2 AND degree_id = $3 AND position = $4
-        ORDER BY created_at DESC`,
-      [ref.conceptId, ref.ageBandId, ref.degreeId, ref.position],
+        WHERE concept_id = $1 AND age_band_id = $2 AND degree_id = $3 AND point_position = $4
+        ORDER BY created_at DESC
+        LIMIT $5 OFFSET $6`,
+      [ref.conceptId, ref.ageBandId, ref.degreeId, ref.position, safeLimit, safeOffset],
     );
     return result.rows.map(toCorrectionDto);
   } catch (error) {
@@ -138,9 +144,9 @@ export async function createCorrection(
     await touchDevice(client, deviceId);
     const result = await client.query<CorrectionRow>(
       `INSERT INTO knowledge_point_corrections
-         (concept_id, age_band_id, degree_id, position, device_id, body, suggested_text)
+         (concept_id, age_band_id, degree_id, point_position, device_id, body, suggested_text)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, concept_id, age_band_id, degree_id, position, device_id, body, suggested_text,
+       RETURNING id, concept_id, age_band_id, degree_id, point_position, device_id, body, suggested_text,
                  status, reviewed_at, reviewer_device_id, points_awarded, created_at`,
       [ref.conceptId, ref.ageBandId, ref.degreeId, ref.position, deviceId, body, suggestedText],
     );
@@ -165,7 +171,7 @@ export async function reviewCorrection(
     await client.query('BEGIN');
     await touchDevice(client, reviewerDeviceId);
     const current = await client.query<CorrectionRow>(
-      `SELECT id, concept_id, age_band_id, degree_id, position, device_id, body, suggested_text,
+      `SELECT id, concept_id, age_band_id, degree_id, point_position, device_id, body, suggested_text,
               status, reviewed_at, reviewer_device_id, points_awarded, created_at
          FROM knowledge_point_corrections
         WHERE id = $1
@@ -188,7 +194,7 @@ export async function reviewCorrection(
               reviewer_device_id = $3,
               points_awarded = $4
         WHERE id = $1
-      RETURNING id, concept_id, age_band_id, degree_id, position, device_id, body, suggested_text,
+      RETURNING id, concept_id, age_band_id, degree_id, point_position, device_id, body, suggested_text,
                 status, reviewed_at, reviewer_device_id, points_awarded, created_at`,
       [correctionId, status, reviewerDeviceId, pointsAwarded],
     );
@@ -215,7 +221,7 @@ function toCommentDto(row: CommentRow): CommentDto {
     conceptId: row.concept_id,
     ageBandId: row.age_band_id,
     degreeId: row.degree_id,
-    position: row.position,
+    position: row.point_position,
     deviceId: row.device_id,
     body: row.body,
     createdAt: row.created_at.toISOString(),
@@ -228,7 +234,7 @@ function toCorrectionDto(row: CorrectionRow): CorrectionDto {
     conceptId: row.concept_id,
     ageBandId: row.age_band_id,
     degreeId: row.degree_id,
-    position: row.position,
+    position: row.point_position,
     deviceId: row.device_id,
     body: row.body,
     suggestedText: row.suggested_text,
@@ -238,4 +244,71 @@ function toCorrectionDto(row: CorrectionRow): CorrectionDto {
     pointsAwarded: row.points_awarded,
     createdAt: row.created_at.toISOString(),
   };
+}
+
+interface CreditRow {
+  id: string;
+  device_id: string;
+  correction_id: string | null;
+  amount: number;
+  reason: string;
+  created_at: Date;
+}
+
+export async function listCredits(deviceId: string, limit = 50, offset = 0): Promise<{ balance: number; items: CreditDto[] }> {
+  const safeLimit = Math.min(Math.max(limit, 1), 200);
+  const safeOffset = Math.max(offset, 0);
+  try {
+    const sumResult = await pool.query<{ balance: string | number }>(
+      `SELECT COALESCE(SUM(amount), 0) AS balance FROM knowledge_point_credits WHERE device_id = $1`,
+      [deviceId],
+    );
+    const result = await pool.query<CreditRow>(
+      `SELECT id, device_id, correction_id, amount, reason, created_at
+         FROM knowledge_point_credits
+        WHERE device_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3`,
+      [deviceId, safeLimit, safeOffset],
+    );
+    const items = result.rows.map((row) => ({
+      id: row.id,
+      deviceId: row.device_id,
+      correctionId: row.correction_id,
+      amount: row.amount,
+      reason: row.reason,
+      createdAt: row.created_at.toISOString(),
+    }));
+    const raw = sumResult.rows[0]?.balance ?? 0;
+    const balance = typeof raw === 'string' ? parseInt(raw, 10) || 0 : Number(raw) || 0;
+    return { balance, items };
+  } catch (error) {
+    if ((error as { code?: string }).code === '42P01') {
+      return { balance: 0, items: [] };
+    }
+    throw toPgError(error);
+  }
+}
+
+
+export async function listPendingCorrections(limit = 50, offset = 0): Promise<CorrectionDto[]> {
+  const safeLimit = Math.min(Math.max(limit, 1), 200);
+  const safeOffset = Math.max(offset, 0);
+  try {
+    const result = await pool.query<CorrectionRow>(
+      `SELECT id, concept_id, age_band_id, degree_id, point_position, device_id, body, suggested_text,
+              status, reviewed_at, reviewer_device_id, points_awarded, created_at
+         FROM knowledge_point_corrections
+        WHERE status = 'pending'
+        ORDER BY created_at ASC
+        LIMIT $1 OFFSET $2`,
+      [safeLimit, safeOffset],
+    );
+    return result.rows.map(toCorrectionDto);
+  } catch (error) {
+    if ((error as { code?: string }).code === '42P01') {
+      return [];
+    }
+    throw toPgError(error);
+  }
 }

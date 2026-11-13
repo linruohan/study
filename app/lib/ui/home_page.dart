@@ -339,7 +339,8 @@ class _HomePageState extends State<HomePage> {
           onChangeBand: _changeBand,
         ),
       3 => ProfileView(
-          graph: widget.graph,
+            repository: widget.repository,
+            graph: widget.graph,
           band: band,
           learner: learner,
           plans: _book.plans,

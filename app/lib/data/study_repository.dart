@@ -162,7 +162,9 @@ class StudyRepository {
     required String ageBandId,
     required String degreeId,
     required int position,
-  }) => _api.fetchPointComments(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, position: position);
+    int? limit,
+    int? offset,
+  }) => _api.fetchPointComments(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, position: position, limit: limit, offset: offset);
 
   Future<Map<String, dynamic>> createPointComment({
     required String conceptId,
@@ -177,7 +179,9 @@ class StudyRepository {
     required String ageBandId,
     required String degreeId,
     required int position,
-  }) => _api.fetchPointCorrections(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, position: position);
+    int? limit,
+    int? offset,
+  }) => _api.fetchPointCorrections(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, position: position, limit: limit, offset: offset);
 
   Future<Map<String, dynamic>> createPointCorrection({
     required String conceptId,
@@ -197,6 +201,75 @@ class StudyRepository {
     String glyph = '类',
     String color = '#7A6A54',
   }) => _api.createCategory(id: id, parentId: parentId, name: name, question: question, glyph: glyph, color: color);
+
+  Future<Map<String, dynamic>> reviewPointCorrection({
+    required String correctionId,
+    required bool approve,
+    int points = 0,
+  }) => _api.reviewPointCorrection(
+    correctionId: correctionId,
+    reviewerDeviceId: deviceId,
+    approve: approve,
+    points: points,
+  );
+
+  Future<List<Map<String, dynamic>>> fetchPointChapters({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+  }) => _api.fetchPointChapters(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, pointPosition: pointPosition);
+
+  Future<Map<String, dynamic>> createPointChapter({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+    required String title,
+    String? content,
+  }) => _api.createPointChapter(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, pointPosition: pointPosition, title: title, content: content);
+
+  Future<Map<String, dynamic>> updatePointChapter({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+    required int chapterPosition,
+    required String title,
+    String? content,
+  }) => _api.updatePointChapter(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, pointPosition: pointPosition, chapterPosition: chapterPosition, title: title, content: content);
+
+  Future<void> deletePointChapter({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+    required int chapterPosition,
+  }) => _api.deletePointChapter(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, pointPosition: pointPosition, chapterPosition: chapterPosition);
+
+  Future<Map<String, dynamic>> fetchPointCredits({int? limit, int? offset}) => _api.fetchPointCredits(deviceId, limit: limit, offset: offset);
+
+  Future<List<Map<String, dynamic>>> fetchPendingPointCorrections({int? limit, int? offset}) => _api.fetchPendingPointCorrections(limit: limit, offset: offset);
+
+  /// 仅刷新知识库并更新本地缓存（保留当前设备数据）。
+  Future<KnowledgeCatalog> reloadKnowledge() async {
+    final deviceId = await _device.read();
+    _deviceId = deviceId;
+    final knowledgeJson = await _api.fetchKnowledge();
+    final catalog = KnowledgeCatalog.fromJson(knowledgeJson)..install();
+    _catalog = catalog;
+    _knowledgeJson = knowledgeJson;
+    final cached = await _cache.read();
+    await _cache.write(
+      knowledge: knowledgeJson,
+      userData: cached?.userData ?? _userDataJson(),
+      pending: cached?.pending ?? _pending,
+    );
+    if (_loaded != null) {
+      _loaded = _snapshot(fromCache: _loaded!.fromCache);
+    }
+    return catalog;
+  }
 
   /// 保存设置。
   Future<void> saveProfile(StudyProfile profile) async {

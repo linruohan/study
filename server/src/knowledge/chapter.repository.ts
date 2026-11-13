@@ -44,7 +44,7 @@ export async function listChapters(ref: ChapterRef): Promise<ChapterDto[]> {
         ORDER BY chapter_position`,
       [ref.conceptId, ref.ageBandId, ref.degreeId, ref.pointPosition],
     );
-    return result.rows.map((row) => ({ title: row.title, content: row.content }));
+    return result.rows.map((row) => ({ chapterPosition: row.chapter_position, title: row.title, content: row.content }));
   } catch (error) {
     if ((error as { code?: string }).code === '42P01') {
       return [];
@@ -88,5 +88,53 @@ export async function loadAllChapters(): Promise<ChapterRow[]> {
       return [];
     }
     throw error;
+  }
+}
+
+export async function updateChapter(
+  ref: ChapterRef,
+  chapterPosition: number,
+  chapter: { title: string; content: string | null },
+): Promise<ChapterDto & { chapterPosition: number }> {
+  await assertPointExists(ref);
+  try {
+    const result = await pool.query<{ chapter_position: number; title: string; content: string | null }>(
+      `UPDATE knowledge_variant_point_chapters
+          SET title = $6, content = $7
+        WHERE concept_id = $1 AND age_band_id = $2 AND degree_id = $3 AND point_position = $4 AND chapter_position = $5
+      RETURNING chapter_position, title, content`,
+      [ref.conceptId, ref.ageBandId, ref.degreeId, ref.pointPosition, chapterPosition, chapter.title, chapter.content],
+    );
+    const row = result.rows[0];
+    if (!row) throw new HttpError(404, 'not_found', '章节不存在');
+    return { chapterPosition: row.chapter_position, title: row.title, content: row.content };
+  } catch (error) {
+    throw toPgError(error);
+  }
+}
+
+export async function deleteChapter(ref: ChapterRef, chapterPosition: number): Promise<void> {
+  await assertPointExists(ref);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const del = await client.query(
+      `DELETE FROM knowledge_variant_point_chapters
+        WHERE concept_id = $1 AND age_band_id = $2 AND degree_id = $3 AND point_position = $4 AND chapter_position = $5`,
+      [ref.conceptId, ref.ageBandId, ref.degreeId, ref.pointPosition, chapterPosition],
+    );
+    if (del.rowCount === 0) throw new HttpError(404, 'not_found', '章节不存在');
+    await client.query(
+      `UPDATE knowledge_variant_point_chapters
+          SET chapter_position = chapter_position - 1
+        WHERE concept_id = $1 AND age_band_id = $2 AND degree_id = $3 AND point_position = $4 AND chapter_position > $5`,
+      [ref.conceptId, ref.ageBandId, ref.degreeId, ref.pointPosition, chapterPosition],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw toPgError(error);
+  } finally {
+    client.release();
   }
 }

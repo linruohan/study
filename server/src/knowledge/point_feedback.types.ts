@@ -31,3 +31,18 @@ export interface CorrectionDto {
   pointsAwarded: number;
   createdAt: string;
 }
+
+export interface CreditDto {
+  id: string;
+  deviceId: string;
+  correctionId: string | null;
+  amount: number;
+  reason: string;
+  createdAt: string;
+}
+
+export interface CreditsSummaryDto {
+  deviceId: string;
+  balance: number;
+  items: CreditDto[];
+}

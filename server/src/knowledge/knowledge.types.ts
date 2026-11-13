@@ -26,6 +26,7 @@ export interface CategoryDto {
 
 /// 知识点下的章节：最基础的知识单元。
 export interface ChapterDto {
+  chapterPosition?: number;
   title: string;
   content?: string | null;
 }

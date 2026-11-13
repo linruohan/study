@@ -51,6 +51,7 @@ class KnowledgeDetailPage extends StatefulWidget {
 class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     with SingleTickerProviderStateMixin {
   late final LearnerState _learner = widget.learner;
+  final Map<String, List<KnowledgeChapter>> _chapterOverrides = {};
 
   late final TabController _tabs = TabController(
     length: KnowledgeCatalog.instance.degrees.length,
@@ -77,6 +78,79 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
       return '';
     }
     return catalog.sageCredits.creatorOfConcept(widget.concept.id);
+  }
+
+  String _chapterKey(StudyDegree degree, int position) => '${degree.id}:$position';
+
+  List<KnowledgeChapter> _chaptersFor(StudyDegree degree, ConceptVariant variant, int position) {
+    return _chapterOverrides[_chapterKey(degree, position)] ?? variant.chaptersFor(degree, position);
+  }
+
+  Future<void> _addChapter(BuildContext context, StudyDegree degree, int position) async {
+    final titleController = TextEditingController();
+    final contentController = TextEditingController();
+    final messenger = ScaffoldMessenger.of(context);
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('添加章节'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: titleController, decoration: const InputDecoration(labelText: '章节标题', border: OutlineInputBorder())),
+          const SizedBox(height: 10),
+          TextField(controller: contentController, maxLines: 3, decoration: const InputDecoration(labelText: '内容（可选）', border: OutlineInputBorder())),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () async {
+              final title = titleController.text.trim();
+              if (title.isEmpty) return;
+              try {
+                await widget.repository.createPointChapter(
+                  conceptId: widget.concept.id,
+                  ageBandId: widget.band.id,
+                  degreeId: degree.id,
+                  pointPosition: position,
+                  title: title,
+                  content: contentController.text.trim().isEmpty ? null : contentController.text.trim(),
+                );
+                if (ctx.mounted) Navigator.of(ctx).pop(true);
+              } catch (e) {
+                if (!ctx.mounted) return;
+                ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('添加失败：$e')));
+              }
+            },
+            child: const Text('添加'),
+          ),
+        ],
+      ),
+    );
+    final ok = created == true;
+    titleController.dispose();
+    contentController.dispose();
+    if (!ok || !mounted) return;
+    try {
+      final raw = await widget.repository.fetchPointChapters(
+        conceptId: widget.concept.id,
+        ageBandId: widget.band.id,
+        degreeId: degree.id,
+        pointPosition: position,
+      );
+      final chapters = [for (final item in raw) KnowledgeChapter.fromJson(item)];
+      if (!mounted) return;
+      setState(() { _chapterOverrides[_chapterKey(degree, position)] = chapters; });
+      messenger.showSnackBar(const SnackBar(content: Text('章节已添加')));
+      // 后台刷新知识库缓存，便于下次进入同步
+      // ignore: unawaited_futures
+      widget.repository.reloadKnowledge();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _chapterOverrides[_chapterKey(degree, position)] = [
+          ..._chaptersFor(degree, widget.concept.variantFor(widget.band), position),
+        ];
+      });
+    }
   }
 
   @override
@@ -244,7 +318,7 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     int position,
   ) {
     final text = Theme.of(context).textTheme;
-    final chapters = variant.chaptersFor(degree, position);
+    final chapters = _chaptersFor(degree, variant, position);
     return PaperCard(
       key: Key('point_${degree.id}_${position - 1}'),
       padding: const EdgeInsets.all(14),
@@ -259,12 +333,25 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
               Expanded(child: Text(point, style: text.bodyMedium)),
             ],
           ),
-          if (chapters.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text('章节', style: text.labelMedium?.copyWith(color: paperInkSoft)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Text('章节', style: text.labelMedium?.copyWith(color: paperInkSoft)),
+              const Spacer(),
+              TextButton.icon(
+                key: Key('point_add_chapter_${degree.id}_${position - 1}'),
+                onPressed: () => _addChapter(context, degree, position),
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('添加章节'),
+              ),
+            ],
+          ),
+          if (chapters.isEmpty)
+            Text('暂无章节，可添加最基础知识单元。', style: text.bodySmall)
+          else ...[
             const SizedBox(height: 6),
             for (var c = 0; c < chapters.length; c++) ...[
-              _chapterTile(context, chapters[c], c + 1),
+              _chapterTile(context, degree, position, chapters[c], c + 1),
               if (c != chapters.length - 1) const SizedBox(height: 6),
             ],
           ],
@@ -281,9 +368,9 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
               ),
               OutlinedButton.icon(
                 key: Key('point_correction_${degree.id}_${position - 1}'),
-                onPressed: () => _openCorrection(context, degree, point, position),
+                onPressed: () => _openCorrections(context, degree, point, position),
                 icon: const Icon(Icons.edit_note_outlined, size: 16),
-                label: const Text('纠错'),
+                label: const Text('纠错/审核'),
               ),
             ],
           ),
@@ -292,9 +379,10 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     );
   }
 
-  Widget _chapterTile(BuildContext context, KnowledgeChapter chapter, int index) {
+  Widget _chapterTile(BuildContext context, StudyDegree degree, int pointPosition, KnowledgeChapter chapter, int index) {
     final text = Theme.of(context).textTheme;
     final content = chapter.content?.trim();
+    final chapterPos = chapter.position ?? index;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
@@ -305,7 +393,24 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$index. ${chapter.title}', style: text.bodySmall?.copyWith(color: paperInk)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: Text('$index. ${chapter.title}', style: text.bodySmall?.copyWith(color: paperInk))),
+              PopupMenuButton<String>(
+                padding: EdgeInsets.zero,
+                iconSize: 18,
+                onSelected: (v) {
+                  if (v == 'edit') _editChapter(context, degree, pointPosition, chapter, chapterPos);
+                  if (v == 'delete') _deleteChapter(context, degree, pointPosition, chapterPos);
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'edit', child: Text('编辑')),
+                  PopupMenuItem(value: 'delete', child: Text('删除')),
+                ],
+              ),
+            ],
+          ),
           if (content != null && content.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(content, style: text.bodySmall),
@@ -313,6 +418,99 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
         ],
       ),
     );
+  }
+
+  Future<void> _refreshChapters(StudyDegree degree, int pointPosition) async {
+    final raw = await widget.repository.fetchPointChapters(
+      conceptId: widget.concept.id,
+      ageBandId: widget.band.id,
+      degreeId: degree.id,
+      pointPosition: pointPosition,
+    );
+    final chapters = [for (final item in raw) KnowledgeChapter.fromJson(item)];
+    if (!mounted) return;
+    setState(() { _chapterOverrides[_chapterKey(degree, pointPosition)] = chapters; });
+    // ignore: unawaited_futures
+    widget.repository.reloadKnowledge();
+  }
+
+  Future<void> _editChapter(BuildContext context, StudyDegree degree, int pointPosition, KnowledgeChapter chapter, int chapterPosition) async {
+    final titleController = TextEditingController(text: chapter.title);
+    final contentController = TextEditingController(text: chapter.content ?? '');
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('编辑章节'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: titleController, decoration: const InputDecoration(labelText: '章节标题', border: OutlineInputBorder())),
+          const SizedBox(height: 10),
+          TextField(controller: contentController, maxLines: 3, decoration: const InputDecoration(labelText: '内容（可选）', border: OutlineInputBorder())),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () async {
+              final title = titleController.text.trim();
+              if (title.isEmpty) return;
+              try {
+                await widget.repository.updatePointChapter(
+                  conceptId: widget.concept.id,
+                  ageBandId: widget.band.id,
+                  degreeId: degree.id,
+                  pointPosition: pointPosition,
+                  chapterPosition: chapterPosition,
+                  title: title,
+                  content: contentController.text.trim().isEmpty ? null : contentController.text.trim(),
+                );
+                if (ctx.mounted) Navigator.of(ctx).pop(true);
+              } catch (e) {
+                if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('保存失败：$e')));
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    titleController.dispose();
+    contentController.dispose();
+    if (ok != true || !mounted) return;
+    try {
+      await _refreshChapters(degree, pointPosition);
+      messenger.showSnackBar(const SnackBar(content: Text('章节已更新')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('刷新失败：$e')));
+    }
+  }
+
+  Future<void> _deleteChapter(BuildContext context, StudyDegree degree, int pointPosition, int chapterPosition) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除章节'),
+        content: const Text('删除后将重排后续章节序号，确定删除吗？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('删除')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await widget.repository.deletePointChapter(
+        conceptId: widget.concept.id,
+        ageBandId: widget.band.id,
+        degreeId: degree.id,
+        pointPosition: pointPosition,
+        chapterPosition: chapterPosition,
+      );
+      await _refreshChapters(degree, pointPosition);
+      messenger.showSnackBar(const SnackBar(content: Text('章节已删除')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('删除失败：$e')));
+    }
   }
 
   Future<void> _openComments(BuildContext context, StudyDegree degree, String point, int position) async {
@@ -331,78 +529,20 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     );
   }
 
-  Future<void> _openCorrection(BuildContext context, StudyDegree degree, String point, int position) async {
-    final bodyController = TextEditingController();
-    final suggestionController = TextEditingController();
-    final submitted = await showDialog<bool>(
+  Future<void> _openCorrections(BuildContext context, StudyDegree degree, String point, int position) async {
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('提交纠错'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(point, style: Theme.of(ctx).textTheme.bodySmall),
-              const SizedBox(height: 12),
-              TextField(
-                controller: bodyController,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  labelText: '问题说明',
-                  hintText: '请描述需要纠正的内容',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: suggestionController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: '建议内容（可选）',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
-          FilledButton(
-            onPressed: () async {
-              final text = bodyController.text.trim();
-              if (text.isEmpty) return;
-              try {
-                await widget.repository.createPointCorrection(
-                  conceptId: widget.concept.id,
-                  ageBandId: widget.band.id,
-                  degreeId: degree.id,
-                  position: position,
-                  body: text,
-                  suggestedText: suggestionController.text.trim().isEmpty
-                      ? null
-                      : suggestionController.text.trim(),
-                );
-                if (ctx.mounted) Navigator.of(ctx).pop(true);
-              } catch (e) {
-                if (!ctx.mounted) return;
-                ScaffoldMessenger.of(ctx).showSnackBar(
-                  SnackBar(content: Text('提交失败：$e')),
-                );
-              }
-            },
-            child: const Text('提交'),
-          ),
-        ],
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => _PointCorrectionsSheet(
+        repository: widget.repository,
+        band: widget.band,
+        concept: widget.concept,
+        degree: degree,
+        position: position,
+        pointText: point,
       ),
     );
-    bodyController.dispose();
-    suggestionController.dispose();
-    if (submitted == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('纠错已提交，审核通过后可获得积分')),
-      );
-    }
   }
 }
 
@@ -569,3 +709,214 @@ class _PointCommentsSheetState extends State<_PointCommentsSheet> {
     );
   }
 }
+
+
+class _PointCorrectionsSheet extends StatefulWidget {
+  const _PointCorrectionsSheet({
+    required this.repository,
+    required this.band,
+    required this.concept,
+    required this.degree,
+    required this.position,
+    required this.pointText,
+  });
+
+  final StudyRepository repository;
+  final AgeBand band;
+  final Concept concept;
+  final StudyDegree degree;
+  final int position;
+  final String pointText;
+
+  @override
+  State<_PointCorrectionsSheet> createState() => _PointCorrectionsSheetState();
+}
+
+class _PointCorrectionsSheetState extends State<_PointCorrectionsSheet> {
+  late Future<List<Map<String, dynamic>>> _future;
+  final _bodyController = TextEditingController();
+  final _suggestionController = TextEditingController();
+  final _pointsController = TextEditingController(text: '5');
+  var _sending = false;
+  var _reviewingId = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<List<Map<String, dynamic>>> _load() {
+    return widget.repository.fetchPointCorrections(
+      conceptId: widget.concept.id,
+      ageBandId: widget.band.id,
+      degreeId: widget.degree.id,
+      position: widget.position,
+    );
+  }
+
+  Future<void> _reload() async {
+    setState(() { _future = _load(); });
+  }
+
+  @override
+  void dispose() {
+    _bodyController.dispose();
+    _suggestionController.dispose();
+    _pointsController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final body = _bodyController.text.trim();
+    if (body.isEmpty || _sending) return;
+    setState(() => _sending = true);
+    try {
+      await widget.repository.createPointCorrection(
+        conceptId: widget.concept.id,
+        ageBandId: widget.band.id,
+        degreeId: widget.degree.id,
+        position: widget.position,
+        body: body,
+        suggestedText: _suggestionController.text.trim().isEmpty ? null : _suggestionController.text.trim(),
+      );
+      _bodyController.clear();
+      _suggestionController.clear();
+      await _reload();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('纠错已提交')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('提交失败：$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _review(String correctionId, bool approve) async {
+    if (_reviewingId.isNotEmpty) return;
+    setState(() => _reviewingId = correctionId);
+    try {
+      final points = int.tryParse(_pointsController.text.trim()) ?? 0;
+      await widget.repository.reviewPointCorrection(
+        correctionId: correctionId,
+        approve: approve,
+        points: approve ? points : 0,
+      );
+      await _reload();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(approve ? '已审核通过并发放积分' : '已驳回纠错')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('审核失败：$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _reviewingId = '');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.78,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('纠错与审核', style: text.titleMedium),
+              const SizedBox(height: 4),
+              Text(widget.pointText, style: text.bodySmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 8),
+              Row(children: [
+                const Text('通过奖励积分：'),
+                SizedBox(width: 80, child: TextField(controller: _pointsController, keyboardType: TextInputType.number, decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()))),
+              ]),
+              const SizedBox(height: 8),
+              Expanded(
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _future,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: paperOchre));
+                    }
+                    if (snapshot.hasError) {
+                      return Center(child: Text('加载失败：${snapshot.error}', style: text.bodySmall));
+                    }
+                    final items = snapshot.data ?? const [];
+                    if (items.isEmpty) {
+                      return Center(child: Text('暂无纠错，可在下方提交。', style: text.bodySmall));
+                    }
+                    return ListView.separated(
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final item = items[index];
+                        final id = item['id'] as String? ?? '';
+                        final status = item['status'] as String? ?? 'pending';
+                        final body = item['body'] as String? ?? '';
+                        final suggested = item['suggestedText'] as String?;
+                        final pts = item['pointsAwarded'];
+                        final busy = _reviewingId == id;
+                        return PaperCard(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Row(children: [
+                              Expanded(child: Text('状态：$status${status == 'approved' && pts != null ? ' · 积分+$pts' : ''}', style: text.labelMedium)),
+                            ]),
+                            const SizedBox(height: 4),
+                            Text(body, style: text.bodyMedium),
+                            if (suggested != null && suggested.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text('建议：$suggested', style: text.bodySmall),
+                            ],
+                            if (status == 'pending') ...[
+                              const SizedBox(height: 8),
+                              Wrap(spacing: 8, children: [
+                                FilledButton.tonal(
+                                  onPressed: busy ? null : () => _review(id, false),
+                                  child: const Text('驳回'),
+                                ),
+                                FilledButton(
+                                  onPressed: busy ? null : () => _review(id, true),
+                                  child: busy ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('通过并给分'),
+                                ),
+                              ]),
+                            ],
+                          ]),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text('提交新纠错', style: text.labelMedium),
+              const SizedBox(height: 6),
+              TextField(controller: _bodyController, maxLines: 2, decoration: const InputDecoration(hintText: '问题说明', border: OutlineInputBorder(), isDense: true)),
+              const SizedBox(height: 6),
+              TextField(controller: _suggestionController, maxLines: 2, decoration: const InputDecoration(hintText: '建议内容（可选）', border: OutlineInputBorder(), isDense: true)),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: _sending ? null : _submit,
+                  child: _sending ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('提交纠错'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+

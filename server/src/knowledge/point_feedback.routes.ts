@@ -41,8 +41,9 @@ function parseOrThrow<S extends z.ZodTypeAny>(schema: S, data: unknown): z.infer
 /// 知识点互动：评论、纠错提交与审核（审核通过可发放积分）。
 export async function pointFeedbackRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/knowledge/points/comments', async (request) => {
-    const ref = parseOrThrow(pointRefSchema, request.query);
-    const comments = await repository.listComments(ref);
+    const q = pointRefSchema.extend({ limit: z.coerce.number().int().min(1).max(200).optional(), offset: z.coerce.number().int().min(0).optional() }).safeParse(request.query);
+    if (!q.success) throw new HttpError(400, 'invalid_request', '请求参数不对');
+    const comments = await repository.listComments(q.data, q.data.limit, q.data.offset);
     return { comments };
   });
 
@@ -57,8 +58,9 @@ export async function pointFeedbackRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/api/knowledge/points/corrections', async (request) => {
-    const ref = parseOrThrow(pointRefSchema, request.query);
-    const corrections = await repository.listCorrections(ref);
+    const q = pointRefSchema.extend({ limit: z.coerce.number().int().min(1).max(200).optional(), offset: z.coerce.number().int().min(0).optional() }).safeParse(request.query);
+    if (!q.success) throw new HttpError(400, 'invalid_request', '请求参数不对');
+    const corrections = await repository.listCorrections(q.data, q.data.limit, q.data.offset);
     return { corrections };
   });
 
@@ -73,6 +75,14 @@ export async function pointFeedbackRoutes(app: FastifyInstance): Promise<void> {
     return { correction };
   });
 
+
+  app.get('/api/knowledge/points/corrections/pending', async (request) => {
+    const parsed = z.object({ limit: z.coerce.number().int().min(1).max(200).optional(), offset: z.coerce.number().int().min(0).optional() }).safeParse(request.query);
+    if (!parsed.success) throw new HttpError(400, 'invalid_request', '请求参数不对');
+    const corrections = await repository.listPendingCorrections(parsed.data.limit, parsed.data.offset);
+    return { corrections };
+  });
+
   app.post('/api/knowledge/points/corrections/review', async (request) => {
     const input = parseOrThrow(reviewSchema, request.body);
     const correction = await repository.reviewCorrection(
@@ -83,4 +93,13 @@ export async function pointFeedbackRoutes(app: FastifyInstance): Promise<void> {
     );
     return { correction };
   });
+
+  app.get('/api/knowledge/points/credits', async (request) => {
+    const parsed = z.object({ deviceId: z.string().uuid(), limit: z.coerce.number().int().min(1).max(200).optional(), offset: z.coerce.number().int().min(0).optional() }).safeParse(request.query);
+    if (!parsed.success) {
+      throw new HttpError(400, 'invalid_request', 'deviceId: 必须是合法 uuid');
+    }
+    return repository.listCredits(parsed.data.deviceId, parsed.data.limit, parsed.data.offset);
+  });
+
 }

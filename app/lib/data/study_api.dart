@@ -23,6 +23,8 @@ abstract class StudyApi {
     required String ageBandId,
     required String degreeId,
     required int position,
+    int? limit,
+    int? offset,
   });
   Future<Map<String, dynamic>> createPointComment({
     required String conceptId,
@@ -37,6 +39,8 @@ abstract class StudyApi {
     required String ageBandId,
     required String degreeId,
     required int position,
+    int? limit,
+    int? offset,
   });
   Future<Map<String, dynamic>> createPointCorrection({
     required String conceptId,
@@ -57,6 +61,58 @@ abstract class StudyApi {
     String glyph = '类',
     String color = '#7A6A54',
   });
+
+  /// 审核知识点纠错（通过可发放积分）。
+  Future<Map<String, dynamic>> reviewPointCorrection({
+    required String correctionId,
+    required String reviewerDeviceId,
+    required bool approve,
+    int points = 0,
+  });
+
+  /// 知识点章节列表。
+  Future<List<Map<String, dynamic>>> fetchPointChapters({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+  });
+
+  /// 为知识点新增章节。
+  Future<Map<String, dynamic>> createPointChapter({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+    required String title,
+    String? content,
+  });
+
+  /// 更新知识点章节。
+  Future<Map<String, dynamic>> updatePointChapter({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+    required int chapterPosition,
+    required String title,
+    String? content,
+  });
+
+  /// 删除知识点章节（服务端会重排后续章节序号）。
+  Future<void> deletePointChapter({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+    required int chapterPosition,
+  });
+
+  /// 当前设备积分余额与流水。
+  Future<Map<String, dynamic>> fetchPointCredits(String deviceId, {int? limit, int? offset});
+
+  /// 全局待审核纠错列表。
+  Future<List<Map<String, dynamic>>> fetchPendingPointCorrections({int? limit, int? offset});
 }
 
 /// 默认实现：访问本地服务。
@@ -137,10 +193,13 @@ class HttpStudyApi implements StudyApi {
     required String ageBandId,
     required String degreeId,
     required int position,
+    int? limit,
+    int? offset,
   }) async {
-    final uri = Uri.parse('$_baseUrl/api/knowledge/points/comments').replace(
-      queryParameters: _pointQuery(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, position: position),
-    );
+    final qp = {..._pointQuery(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, position: position)};
+    if (limit != null) qp['limit'] = '$limit';
+    if (offset != null) qp['offset'] = '$offset';
+    final uri = Uri.parse('$_baseUrl/api/knowledge/points/comments').replace(queryParameters: qp);
     final map = await _requestUri('GET', uri);
     final list = map['comments'];
     if (list is! List) return const [];
@@ -171,10 +230,13 @@ class HttpStudyApi implements StudyApi {
     required String ageBandId,
     required String degreeId,
     required int position,
+    int? limit,
+    int? offset,
   }) async {
-    final uri = Uri.parse('$_baseUrl/api/knowledge/points/corrections').replace(
-      queryParameters: _pointQuery(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, position: position),
-    );
+    final qp = {..._pointQuery(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, position: position)};
+    if (limit != null) qp['limit'] = '$limit';
+    if (offset != null) qp['offset'] = '$offset';
+    final uri = Uri.parse('$_baseUrl/api/knowledge/points/corrections').replace(queryParameters: qp);
     final map = await _requestUri('GET', uri);
     final list = map['corrections'];
     if (list is! List) return const [];
@@ -200,6 +262,128 @@ class HttpStudyApi implements StudyApi {
     final map = await _request('POST', '/api/knowledge/points/corrections', body: payload);
     final correction = map['correction'];
     return correction is Map ? Map<String, dynamic>.from(correction) : map;
+  }
+
+  @override
+  Future<Map<String, dynamic>> reviewPointCorrection({
+    required String correctionId,
+    required String reviewerDeviceId,
+    required bool approve,
+    int points = 0,
+  }) async {
+    final map = await _request('POST', '/api/knowledge/points/corrections/review', body: {
+      'correctionId': correctionId,
+      'reviewerDeviceId': reviewerDeviceId,
+      'approve': approve,
+      'points': points,
+    });
+    final correction = map['correction'];
+    return correction is Map ? Map<String, dynamic>.from(correction) : map;
+  }
+
+  Map<String, String> _chapterQuery({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+  }) => {
+        'conceptId': conceptId,
+        'ageBandId': ageBandId,
+        'degreeId': degreeId,
+        'pointPosition': '$pointPosition',
+      };
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchPointChapters({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/knowledge/points/chapters').replace(
+      queryParameters: _chapterQuery(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, pointPosition: pointPosition),
+    );
+    final map = await _requestUri('GET', uri);
+    final list = map['chapters'];
+    if (list is! List) return const [];
+    return [for (final item in list) if (item is Map) Map<String, dynamic>.from(item)];
+  }
+
+  @override
+  Future<Map<String, dynamic>> createPointChapter({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+    required String title,
+    String? content,
+  }) async {
+    final map = await _request('POST', '/api/knowledge/points/chapters', body: {
+      ..._chapterQuery(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, pointPosition: pointPosition),
+      'title': title,
+      'content': content,
+    });
+    final chapter = map['chapter'];
+    return chapter is Map ? Map<String, dynamic>.from(chapter) : map;
+  }
+
+  @override
+  Future<Map<String, dynamic>> updatePointChapter({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+    required int chapterPosition,
+    required String title,
+    String? content,
+  }) async {
+    final map = await _request('PUT', '/api/knowledge/points/chapters', body: {
+      ..._chapterQuery(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, pointPosition: pointPosition),
+      'chapterPosition': chapterPosition,
+      'title': title,
+      'content': content,
+    });
+    final chapter = map['chapter'];
+    return chapter is Map ? Map<String, dynamic>.from(chapter) : map;
+  }
+
+  @override
+  Future<void> deletePointChapter({
+    required String conceptId,
+    required String ageBandId,
+    required String degreeId,
+    required int pointPosition,
+    required int chapterPosition,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/knowledge/points/chapters').replace(
+      queryParameters: {
+        ..._chapterQuery(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, pointPosition: pointPosition),
+        'chapterPosition': '$chapterPosition',
+      },
+    );
+    await _requestUri('DELETE', uri);
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchPointCredits(String deviceId, {int? limit, int? offset}) async {
+    final qp = <String, String>{'deviceId': deviceId};
+    if (limit != null) qp['limit'] = '$limit';
+    if (offset != null) qp['offset'] = '$offset';
+    final uri = Uri.parse('$_baseUrl/api/knowledge/points/credits').replace(queryParameters: qp);
+    return _requestUri('GET', uri);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchPendingPointCorrections({int? limit, int? offset}) async {
+    final qp = <String, String>{};
+    if (limit != null) qp['limit'] = '$limit';
+    if (offset != null) qp['offset'] = '$offset';
+    final uri = Uri.parse('$_baseUrl/api/knowledge/points/corrections/pending')
+        .replace(queryParameters: qp.isEmpty ? null : qp);
+    final map = await _requestUri('GET', uri);
+    final list = map['corrections'];
+    if (list is! List) return const [];
+    return [for (final item in list) if (item is Map) Map<String, dynamic>.from(item)];
   }
 
 

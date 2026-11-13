@@ -41,4 +41,32 @@ export async function chapterRoutes(app: FastifyInstance): Promise<void> {
     );
     return { chapter };
   });
+
+  const updateSchema = refSchema.extend({
+    chapterPosition: z.coerce.number().int().min(1),
+    title: z.string().trim().min(1).max(200),
+    content: z.string().trim().max(8000).nullable().optional(),
+  });
+  const deleteSchema = refSchema.extend({
+    chapterPosition: z.coerce.number().int().min(1),
+  });
+
+  app.put('/api/knowledge/points/chapters', async (request) => {
+    const input = parseOrThrow(updateSchema, request.body);
+    const chapter = await repository.updateChapter(
+      { conceptId: input.conceptId, ageBandId: input.ageBandId, degreeId: input.degreeId, pointPosition: input.pointPosition },
+      input.chapterPosition,
+      { title: input.title, content: input.content ?? null },
+    );
+    return { chapter };
+  });
+
+  app.delete('/api/knowledge/points/chapters', async (request) => {
+    const input = parseOrThrow(deleteSchema, request.query);
+    await repository.deleteChapter(
+      { conceptId: input.conceptId, ageBandId: input.ageBandId, degreeId: input.degreeId, pointPosition: input.pointPosition },
+      input.chapterPosition,
+    );
+    return { ok: true };
+  });
 }

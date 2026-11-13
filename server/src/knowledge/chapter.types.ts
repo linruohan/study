@@ -1,4 +1,5 @@
 export interface ChapterDto {
+  chapterPosition?: number;
   title: string;
   content?: string | null;
 }

@@ -232,7 +232,7 @@ export async function loadKnowledgeBundle(): Promise<KnowledgeBundle> {
     variant.chapters ??= {};
     const byDegree = (variant.chapters[row.degree_id] ??= {});
     const key = String(row.point_position);
-    (byDegree[key] ??= []).push({ title: row.title, content: row.content });
+    (byDegree[key] ??= []).push({ chapterPosition: row.chapter_position, title: row.title, content: row.content });
   }
 
   return { ageBands, degrees, categories, domains, sageCredits: await loadSageCredits() };
