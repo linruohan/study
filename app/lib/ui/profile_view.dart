@@ -648,13 +648,20 @@ class _ProfileViewState extends State<ProfileView> {
 }
 
 /// 打开账号弹窗（登录 / 改密 / 退出 / 学位申请）；设置页与「我的」页共用。
-Future<void> showAccountDialog(BuildContext context) async {
-  await showDialog<void>(context: context, builder: (_) => const _AccountDialog());
+///
+/// 传入 repository 时，管理员还能在弹窗里审核学位申请。
+Future<void> showAccountDialog(BuildContext context, {StudyRepository? repository}) async {
+  await showDialog<void>(
+    context: context,
+    builder: (_) => _AccountDialog(repository: repository),
+  );
 }
 
 /// 登录 / 账号管理弹窗：未登录时登录，已登录时改密、申请学位或退出。
 class _AccountDialog extends StatefulWidget {
-  const _AccountDialog();
+  const _AccountDialog({this.repository});
+
+  final StudyRepository? repository;
 
   @override
   State<_AccountDialog> createState() => _AccountDialogState();
@@ -669,11 +676,52 @@ class _AccountDialogState extends State<_AccountDialog> {
   String? _error;
   String? _degreeLabel;
   String? _applyRealm;
+  List<Map<String, dynamic>>? _pendingApplications;
 
   @override
   void initState() {
     super.initState();
     _loadDegree();
+    _loadApplications();
+  }
+
+  Future<void> _loadApplications() async {
+    final repository = widget.repository;
+    if (repository == null || AuthSession.user?.isAdmin != true) {
+      return;
+    }
+    try {
+      final applications = await repository.fetchDegreeApplications();
+      if (mounted) {
+        setState(() => _pendingApplications = applications);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _pendingApplications = const []);
+      }
+    }
+  }
+
+  Future<void> _reviewApplication(String id, bool approve) async {
+    final repository = widget.repository;
+    if (repository == null) {
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await repository.reviewDegreeApplication(applicationId: id, approve: approve);
+      await _loadApplications();
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = '$error';
+          _busy = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadDegree() async {
@@ -794,6 +842,56 @@ class _AccountDialogState extends State<_AccountDialog> {
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(_error!, style: const TextStyle(color: Colors.red)),
                   ),
+                if (user.isAdmin && widget.repository != null) ...[
+                  const SizedBox(height: 12),
+                  Text('待审学位申请', style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 4),
+                  if (_pendingApplications == null)
+                    const LinearProgressIndicator(minHeight: 2)
+                  else if (_pendingApplications!.isEmpty)
+                    const Text('暂无待审申请', style: TextStyle(fontSize: 12))
+                  else
+                    SizedBox(
+                      height: 150,
+                      child: ListView(
+                        children: [
+                          for (final application in _pendingApplications!)
+                            ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                '${application['targetRealmLabel'] ?? application['targetRealm'] ?? ''}',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              subtitle: Text(
+                                '${application['userId'] ?? ''}',
+                                style: const TextStyle(fontSize: 11),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  TextButton(
+                                    onPressed: _busy
+                                        ? null
+                                        : () => _reviewApplication(
+                                            application['id'] as String, true),
+                                    child: const Text('通过'),
+                                  ),
+                                  TextButton(
+                                    onPressed: _busy
+                                        ? null
+                                        : () => _reviewApplication(
+                                            application['id'] as String, false),
+                                    child: const Text('驳回'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
               ],
             ),
       actions: [

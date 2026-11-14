@@ -308,6 +308,17 @@ class StudyRepository {
 
   Future<List<Map<String, dynamic>>> fetchPendingPointCorrections({int? limit, int? offset}) => _api.fetchPendingPointCorrections(limit: limit, offset: offset);
 
+  /// 学位申请列表（仅管理员）。
+  Future<List<Map<String, dynamic>>> fetchDegreeApplications({String status = 'pending'}) =>
+      _api.fetchDegreeApplications(status: status);
+
+  /// 审核学位申请（仅管理员；通过即提升申请人境界）。
+  Future<Map<String, dynamic>> reviewDegreeApplication({
+    required String applicationId,
+    required bool approve,
+  }) =>
+      _api.reviewDegreeApplication(applicationId: applicationId, approve: approve);
+
   /// 仅刷新知识库并更新本地缓存（保留当前设备数据）。
   Future<KnowledgeCatalog> reloadKnowledge() async {
     final deviceId = await _device.read();

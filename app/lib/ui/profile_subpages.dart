@@ -220,7 +220,7 @@ class SettingsPage extends StatelessWidget {
                   : AuthSession.user!.isAdmin
                       ? '管理员'
                       : '普通用户（只读）',
-              onTap: () => showAccountDialog(context),
+              onTap: () => showAccountDialog(context, repository: repository),
             ),
           ),
           const SizedBox(height: 16),

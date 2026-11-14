@@ -144,6 +144,15 @@ abstract class StudyApi {
 
   /// 全局待审核纠错列表。
   Future<List<Map<String, dynamic>>> fetchPendingPointCorrections({int? limit, int? offset});
+
+  /// 学位申请列表（仅管理员；status: pending/approved/rejected/all）。
+  Future<List<Map<String, dynamic>>> fetchDegreeApplications({String status = 'pending'});
+
+  /// 审核学位申请，通过即把申请人境界提升到目标境界（仅管理员）。
+  Future<Map<String, dynamic>> reviewDegreeApplication({
+    required String applicationId,
+    required bool approve,
+  });
 }
 
 /// 默认实现：访问本地服务。
@@ -475,6 +484,26 @@ class HttpStudyApi implements StudyApi {
     final list = map['corrections'];
     if (list is! List) return const [];
     return [for (final item in list) if (item is Map) Map<String, dynamic>.from(item)];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchDegreeApplications({String status = 'pending'}) async {
+    final uri = Uri.parse('$_baseUrl/api/degree/applications')
+        .replace(queryParameters: {'status': status});
+    final map = await _requestUri('GET', uri);
+    final list = map['applications'];
+    if (list is! List) return const [];
+    return [for (final item in list) if (item is Map) Map<String, dynamic>.from(item)];
+  }
+
+  @override
+  Future<Map<String, dynamic>> reviewDegreeApplication({
+    required String applicationId,
+    required bool approve,
+  }) {
+    return _request('POST', '/api/degree/applications/$applicationId/review', body: {
+      'approve': approve,
+    });
   }
 
 

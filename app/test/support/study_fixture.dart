@@ -288,6 +288,21 @@ class FakeStudyApi implements StudyApi {
   }
 
   @override
+  Future<List<Map<String, dynamic>>> fetchDegreeApplications({String status = 'pending'}) async {
+    _ensureOnline();
+    return const [];
+  }
+
+  @override
+  Future<Map<String, dynamic>> reviewDegreeApplication({
+    required String applicationId,
+    required bool approve,
+  }) async {
+    _ensureOnline();
+    return {'application': {'id': applicationId, 'status': approve ? 'approved' : 'rejected'}};
+  }
+
+  @override
   Future<Map<String, dynamic>> fetchPointCredits(String deviceId, {int? limit, int? offset}) async {
     _ensureOnline();
     return {'deviceId': deviceId, 'balance': 0, 'items': const []};
