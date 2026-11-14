@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../app_brand.dart';
@@ -342,6 +344,24 @@ class _HomePageState extends State<HomePage> {
     return under.isNotEmpty ? under.first : category;
   }
 
+  /// 消息缓存：依赖（band、计划数）没变时复用，build 里多次取不再重复构建排序。
+  List<AppMessage>? _messagesCache;
+  AgeBand? _messagesCacheBand;
+  int _messagesCachePlanCount = -1;
+
+  List<AppMessage> _messages(AgeBand band) {
+    if (_messagesCache != null &&
+        identical(_messagesCacheBand, band) &&
+        _messagesCachePlanCount == _book.plans.length) {
+      return _messagesCache!;
+    }
+    final messages = _buildMessages(band);
+    _messagesCache = messages;
+    _messagesCacheBand = band;
+    _messagesCachePlanCount = _book.plans.length;
+    return messages;
+  }
+
   /// 汇总当前消息：系统欢迎 + 还没完成的计划提醒。
   ///
   /// 消息暂时按界面即时生成，不额外落库；后续接推送时再换存储。
@@ -517,7 +537,8 @@ class _HomePageState extends State<HomePage> {
       showInfoToast(context, '还没有导出副本，先用「导出档案到本地」导出一份。');
       return;
     }
-    final confirmed = await showDialog<bool>(
+    // 让用户选中的那份副本真正被导入；pop 带回选中的副本对象。
+    final selected = await showDialog<File>(
       context: context,
       builder: (ctx) => AlertDialog(
         key: const Key('import_archive_dialog'),
@@ -535,11 +556,12 @@ class _HomePageState extends State<HomePage> {
                   shrinkWrap: true,
                   itemCount: copies.length,
                   itemBuilder: (context, index) {
-                    final name = copies[index].uri.pathSegments.last;
+                    final copy = copies[index];
+                    final name = copy.uri.pathSegments.last;
                     return ListTile(
                       dense: true,
                       title: Text(name, overflow: TextOverflow.ellipsis),
-                      onTap: () => Navigator.of(ctx).pop(true),
+                      onTap: () => Navigator.of(ctx).pop(copy),
                       trailing: index == 0 ? const Text('最新') : null,
                     );
                   },
@@ -549,15 +571,15 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text('取消')),
         ],
       ),
     );
-    if (confirmed != true || !mounted) {
+    if (selected == null || !mounted) {
       return;
     }
     try {
-      final archive = await widget.archive.importCopy(copies.first);
+      final archive = await widget.archive.importCopy(selected);
       if (!mounted) {
         return;
       }
@@ -655,13 +677,17 @@ class _HomePageState extends State<HomePage> {
     ScholarCategory category,
   ) async {
     final now = DateTime.now();
+    final degrees = widget.repository.catalog.degrees;
+    if (degrees.isEmpty) {
+      return;
+    }
     await _book.add(
       StudyPlan(
         id: 'plan_${now.microsecondsSinceEpoch}',
         categoryId: category.id,
         depth: PlanDepth.deep,
         conceptId: concept.id,
-        degree: widget.repository.catalog.degrees.first,
+        degree: degrees.first,
         startAt: now,
         remind: false,
       ),
@@ -719,6 +745,7 @@ class _HomePageState extends State<HomePage> {
         ),
       _ => PlanView(
           archive: widget.archive,
+          repository: widget.repository,
           graph: _graph,
           band: band,
           learner: learner,
@@ -777,7 +804,7 @@ class _HomePageState extends State<HomePage> {
         ),
         actions: [
           MessageMenuButton(
-            messages: _buildMessages(band),
+            messages: _messages(band),
             readIds: _readMessageIds,
             onMarkRead: (id) {
               setState(() => _readMessageIds.add(id));
@@ -786,7 +813,7 @@ class _HomePageState extends State<HomePage> {
             onMarkAllRead: () {
               setState(() {
                 _readMessageIds.addAll(
-                  _buildMessages(band).map((message) => message.id),
+                  _messages(band).map((message) => message.id),
                 );
               });
               _readStore.save(_readMessageIds);

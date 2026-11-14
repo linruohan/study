@@ -153,6 +153,24 @@ abstract class StudyApi {
     required String applicationId,
     required bool approve,
   });
+
+  /// 学习计划方案列表（内置 + 本人自建）。
+  Future<List<Map<String, dynamic>>> fetchPlanSchemes();
+
+  /// 学习计划方案详情（含维度与条目）。
+  Future<Map<String, dynamic>> fetchPlanScheme(String id);
+
+  /// 创建自建方案。
+  Future<Map<String, dynamic>> createPlanScheme(Map<String, dynamic> input);
+
+  /// 更新自建方案（整体替换维度/条目）。
+  Future<Map<String, dynamic>> updatePlanScheme(String id, Map<String, dynamic> input);
+
+  /// 删除自建方案。
+  Future<void> deletePlanScheme(String id);
+
+  /// 复制方案为本人自建。
+  Future<Map<String, dynamic>> clonePlanScheme(String id);
 }
 
 /// 默认实现：访问本地服务。
@@ -506,14 +524,60 @@ class HttpStudyApi implements StudyApi {
     });
   }
 
+  @override
+  Future<List<Map<String, dynamic>>> fetchPlanSchemes() async {
+    final map = await _request('GET', '/api/plan-schemes');
+    final list = map['schemes'];
+    if (list is! List) return const [];
+    return [for (final item in list) if (item is Map) Map<String, dynamic>.from(item)];
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchPlanScheme(String id) {
+    return _request('GET', '/api/plan-schemes/$id');
+  }
+
+  @override
+  Future<Map<String, dynamic>> createPlanScheme(Map<String, dynamic> input) async {
+    final map = await _request('POST', '/api/plan-schemes', body: input);
+    final scheme = map['scheme'];
+    return scheme is Map ? Map<String, dynamic>.from(scheme) : map;
+  }
+
+  @override
+  Future<Map<String, dynamic>> updatePlanScheme(String id, Map<String, dynamic> input) async {
+    final map = await _request('PUT', '/api/plan-schemes/$id', body: input);
+    final scheme = map['scheme'];
+    return scheme is Map ? Map<String, dynamic>.from(scheme) : map;
+  }
+
+  @override
+  Future<void> deletePlanScheme(String id) {
+    return _request('DELETE', '/api/plan-schemes/$id');
+  }
+
+  @override
+  Future<Map<String, dynamic>> clonePlanScheme(String id) async {
+    final map = await _request('POST', '/api/plan-schemes/$id/clone');
+    final scheme = map['scheme'];
+    return scheme is Map ? Map<String, dynamic>.from(scheme) : map;
+  }
+
 
   Future<Map<String, dynamic>> _request(String method, String path, {Object? body}) {
-    return _requestUri(method, Uri.parse('$_baseUrl$path'), body: body);
+    // 逐段编码路径（字面量段保持原样，id 等动态段编码），保留字符不会拼坏 URL。
+    final encodedPath = [
+      for (final segment in path.split('/'))
+        if (segment.isNotEmpty)
+          segment == 'api' ? segment : Uri.encodeComponent(segment),
+    ].join('/');
+    return _requestUri(method, Uri.parse('$_baseUrl/$encodedPath'), body: body);
   }
 
   Future<Map<String, dynamic>> _requestUri(String method, Uri uri, {Object? body}) async {
+    HttpClientRequest? request;
     try {
-      final request = await _client.openUrl(method, uri).timeout(_timeout);
+      request = await _client.openUrl(method, uri).timeout(_timeout);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
       // 已登录时带上会话 token；服务端据此判断管理员权限。
       final token = AuthSession.token;
@@ -525,12 +589,21 @@ class HttpStudyApi implements StudyApi {
         request.write(jsonEncode(body));
       }
       final response = await request.close().timeout(_timeout);
+      request = null; // 连接已交给响应，超时时不再中止。
       final text = await response
           .transform(utf8.decoder)
           .join()
-          .timeout(_timeout);
+          .timeout(_timeout, onTimeout: () {
+        // 超时时主动断开连接，避免慢请求把 keep-alive 连接占满。
+        response.detachSocket().ignore();
+        return '';
+      });
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw StudyApiException(_errorMessage(text, response.statusCode));
+      }
+      if (text.isEmpty) {
+        // 204 等空成功响应合法，直接当空对象处理。
+        return <String, dynamic>{};
       }
       final decoded = jsonDecode(text);
       if (decoded is! Map) {
@@ -542,11 +615,15 @@ class HttpStudyApi implements StudyApi {
     } on SocketException {
       throw StudyApiException('连不上本地服务，请确认服务已启动');
     } on TimeoutException {
+      // 请求阶段超时时中止底层连接，避免 socket 泄漏。
+      request?.abort();
       throw StudyApiException('请求超时，请稍后再试');
     } on FormatException {
       throw StudyApiException('接口返回的内容无法解析');
     } on HttpException {
       throw StudyApiException('网络请求失败，请稍后再试');
+    } on HandshakeException {
+      throw StudyApiException('安全连接建立失败，请稍后再试');
     }
   }
 

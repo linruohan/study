@@ -308,6 +308,41 @@ class FakeStudyApi implements StudyApi {
     return {'deviceId': deviceId, 'balance': 0, 'items': const []};
   }
 
+  @override
+  Future<List<Map<String, dynamic>>> fetchPlanSchemes() async {
+    _ensureOnline();
+    return const [];
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchPlanScheme(String id) async {
+    _ensureOnline();
+    throw StudyApiException('方案不存在');
+  }
+
+  @override
+  Future<Map<String, dynamic>> createPlanScheme(Map<String, dynamic> input) async {
+    _ensureOnline();
+    return Map<String, dynamic>.from(input);
+  }
+
+  @override
+  Future<Map<String, dynamic>> updatePlanScheme(String id, Map<String, dynamic> input) async {
+    _ensureOnline();
+    return Map<String, dynamic>.from(input);
+  }
+
+  @override
+  Future<void> deletePlanScheme(String id) async {
+    _ensureOnline();
+  }
+
+  @override
+  Future<Map<String, dynamic>> clonePlanScheme(String id) async {
+    _ensureOnline();
+    return {'id': id};
+  }
+
   void _ensureOnline() {
     if (offline) {
       throw StudyApiException('测试断网');

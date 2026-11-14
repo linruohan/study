@@ -9,8 +9,10 @@ import '../knowledge/knowledge_graph.dart';
 import '../knowledge/study_degree.dart';
 import '../learning/learner_state.dart';
 import '../plan/study_plan.dart';
+import '../data/study_repository.dart';
 import 'degree_learning_page.dart';
 import 'feedback.dart';
+import 'plan_schemes_page.dart';
 import 'theme.dart';
 import 'widgets/empty_state.dart';
 import 'widgets/glyph_badge.dart';
@@ -29,6 +31,7 @@ class PlanView extends StatefulWidget {
   const PlanView({
     super.key,
     required this.archive,
+    required this.repository,
     required this.graph,
     required this.band,
     required this.learner,
@@ -39,6 +42,10 @@ class PlanView extends StatefulWidget {
   });
 
   final ArchiveStore archive;
+
+  /// 数据仓库：学习方案页用它拉取内置/自建方案。
+  final StudyRepository repository;
+
   final KnowledgeGraph graph;
   final AgeBand band;
   final LearnerState learner;
@@ -63,8 +70,15 @@ class _PlanViewState extends State<PlanView> {
   /// 左侧选中的分类 id；空时默认选第一个有计划的分类。
   String? _selectedCategoryId;
 
+  /// 分组结果缓存：只在 plans 输入变化时重算一次，build 里多次取用不再重复分组。
+  Map<ScholarCategory, List<StudyPlan>>? _groupedCache;
+  List<StudyPlan>? _groupedSource;
+
   /// 知识级计划，按分类分组。
   Map<ScholarCategory, List<StudyPlan>> get _grouped {
+    if (_groupedSource != null && identical(_groupedSource, widget.plans)) {
+      return _groupedCache!;
+    }
     final grouped = <ScholarCategory, List<StudyPlan>>{};
     for (final plan in widget.plans) {
       final conceptId = plan.conceptId;
@@ -77,6 +91,8 @@ class _PlanViewState extends State<PlanView> {
       }
       grouped.putIfAbsent(category, () => []).add(plan);
     }
+    _groupedCache = grouped;
+    _groupedSource = widget.plans;
     return grouped;
   }
 
@@ -186,6 +202,17 @@ class _PlanViewState extends State<PlanView> {
             child: PageHeader(
               title: '我的计划',
               subtitle: '按分类分组。点一条知识，按选好的程度逐条学知识点。',
+              trailing: TextButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => PlanSchemesPage(repository: widget.repository),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.map_outlined, size: 18),
+                label: const Text('学习方案'),
+              ),
             ),
           ),
           Expanded(

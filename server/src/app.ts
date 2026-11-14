@@ -13,6 +13,7 @@ import { knowledgeRoutes } from './knowledge/knowledge.routes.js';
 import { pointFeedbackRoutes } from './knowledge/point_feedback.routes.js';
 import { sageRoutes } from './knowledge/sage.routes.js';
 import { meRoutes } from './me/me.routes.js';
+import { planSchemeRoutes } from './plan_scheme/plan_scheme.routes.js';
 
 /// 组装 Fastify 应用：插件、路由和统一的错误出口都在这里。
 export async function buildApp(): Promise<FastifyInstance> {
@@ -88,6 +89,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(pointFeedbackRoutes);
   await app.register(chapterRoutes);
   await app.register(meRoutes);
+  await app.register(planSchemeRoutes);
 
   // 内置管理员（admin/admin，首登强制改密）；库还没迁移时会报错，由启动日志暴露。
   await ensureAdminUser();

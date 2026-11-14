@@ -2,6 +2,7 @@ import '../archive/archive_file.dart';
 import '../archive/learning_record.dart';
 import '../knowledge/knowledge_catalog.dart';
 import '../plan/study_plan.dart';
+import '../plan_scheme/plan_scheme.dart';
 import '../profile/study_profile.dart';
 import 'device_id_store.dart';
 import 'sage_api.dart';
@@ -319,6 +320,62 @@ class StudyRepository {
   }) =>
       _api.reviewDegreeApplication(applicationId: applicationId, approve: approve);
 
+  // ── 学习计划方案 ────────────────────────────────────────────────────
+
+  /// 最近一次拉到的方案列表（离线时用这份）。
+  List<PlanScheme> _planSchemes = const [];
+
+  /// 上次拉取方案列表是否因断网回退到了旧数据。
+  bool _planSchemesStale = false;
+
+  List<PlanScheme> get planSchemes => List.unmodifiable(_planSchemes);
+
+  /// 方案列表是否是离线兜底的旧数据；界面据此提示。
+  bool get planSchemesStale => _planSchemesStale;
+
+  /// 拉取方案列表（内置 + 本人自建），失败时回退到最近一次结果并标记 stale。
+  Future<List<PlanScheme>> fetchPlanSchemes() async {
+    try {
+      final list = await _api.fetchPlanSchemes();
+      _planSchemes = [
+        for (final item in list)
+          if (PlanScheme.tryFromJson(item) case final scheme?) scheme,
+      ];
+      _planSchemesStale = false;
+    } on StudyApiException {
+      // 断网时保留上次列表，让方案页离线可看，但让界面知道这是旧数据。
+      _planSchemesStale = true;
+    }
+    return planSchemes;
+  }
+
+  /// 拉取方案详情（含维度与条目）。
+  Future<PlanScheme> fetchPlanScheme(String id) async {
+    final map = await _api.fetchPlanScheme(id);
+    return PlanScheme.fromJson(map['scheme'] as Map<String, dynamic>);
+  }
+
+  /// 创建自建方案，返回服务端生成的方案。
+  Future<PlanScheme> createPlanScheme(PlanScheme scheme) async {
+    final map = await _api.createPlanScheme(scheme.toInputJson());
+    return PlanScheme.fromJson(map);
+  }
+
+  /// 更新自建方案（整体替换维度/条目）。
+  Future<PlanScheme> updatePlanScheme(PlanScheme scheme) async {
+    final map = await _api.updatePlanScheme(scheme.id, scheme.toInputJson());
+    return PlanScheme.fromJson(map);
+  }
+
+  /// 删除自建方案。
+  Future<void> deletePlanScheme(String id) => _api.deletePlanScheme(id);
+
+  /// 复制方案为本人自建。
+  Future<PlanScheme> clonePlanScheme(String id) async {
+    final map = await _api.clonePlanScheme(id);
+    return PlanScheme.fromJson(map);
+  }
+
   /// 仅刷新知识库并更新本地缓存（保留当前设备数据）。
   Future<KnowledgeCatalog> reloadKnowledge() async {
     final deviceId = await _device.read();
@@ -386,15 +443,11 @@ class StudyRepository {
     try {
       await _api.saveUserData(deviceId, data);
       _pending = false;
-      try {
-        // 回读数据库，页面随后展示的就是库里真实保存的内容。
-        _applyUserData(await _api.fetchUserData(deviceId));
-      } catch (_) {
-        // 回读失败时先保留刚写入的内容，下次加载会再同步。
-      }
+      // 不再整包回读：服务端此刻的数据就是刚提交的这份快照，
+      // 回读反而会把回读期间用户的新修改覆盖掉（丢失更新）。
       await _cache.write(
         knowledge: knowledge,
-        userData: _userDataJson(),
+        userData: data,
         pending: false,
       );
     } catch (_) {

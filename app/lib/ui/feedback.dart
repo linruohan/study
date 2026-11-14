@@ -17,6 +17,11 @@ void showInfoToast(BuildContext context, String message) {
   _showToast(context, message, color: paperInk, icon: Icons.info_outline);
 }
 
+/// 失败提示：右下角红色轻提示，用于不弹窗的轻量校验失败。
+void showFailureToast(BuildContext context, String message) {
+  _showToast(context, message, color: const Color(0xFF8A3B32), icon: Icons.error_outline);
+}
+
 /// 失败的统一弹窗：标题说明哪一步失败，正文给出具体原因。
 Future<void> showFailureDialog(
   BuildContext context, {
