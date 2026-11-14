@@ -25,6 +25,11 @@ const statusSchema = z
   .enum(['pending', 'approved', 'rejected', 'all'])
   .default('pending');
 
+const listQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
 /// 九境三阶：查看自己的境界、提交学位申请；审核仅管理员。
 export async function degreeRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/degree', { preHandler: requireAuth }, async (request) => {
@@ -46,26 +51,28 @@ export async function degreeRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/api/degree/applications/mine', { preHandler: requireAuth }, async (request) => {
-    const query = request.query as { limit?: string; offset?: string };
+    const parsed = listQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      throw new HttpError(400, 'invalid_request', 'limit/offset 需要是合法数字');
+    }
     const applications = await myApplications(
       request.authUser!.id,
-      query.limit ? Number.parseInt(query.limit, 10) : undefined,
-      query.offset ? Number.parseInt(query.offset, 10) : undefined,
+      parsed.data.limit,
+      parsed.data.offset,
     );
     return { applications };
   });
 
   app.get('/api/degree/applications', { preHandler: requireAdmin }, async (request) => {
-    const query = request.query as { status?: string; limit?: string; offset?: string };
-    const parsed = statusSchema.safeParse(query.status);
+    const parsed = listQuerySchema.safeParse(request.query);
+    const status = statusSchema.safeParse((request.query as { status?: string }).status);
     if (!parsed.success) {
+      throw new HttpError(400, 'invalid_request', 'limit/offset 需要是合法数字');
+    }
+    if (!status.success) {
       throw new HttpError(400, 'invalid_request', 'status 必须是 pending/approved/rejected/all');
     }
-    const applications = await listApplications(
-      parsed.data,
-      query.limit ? Number.parseInt(query.limit, 10) : undefined,
-      query.offset ? Number.parseInt(query.offset, 10) : undefined,
-    );
+    const applications = await listApplications(status.data, parsed.data.limit, parsed.data.offset);
     return { applications };
   });
 

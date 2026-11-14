@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { pool } from '../db.js';
 import { HttpError } from '../http/errors.js';
 import { hashPassword, newSessionToken, tokenDigest, verifyPassword } from './auth.service.js';
@@ -50,12 +51,13 @@ export async function login(username: string, password: string): Promise<{ token
   if (!row || !verifyPassword(password, row.password_hash)) {
     throw new HttpError(401, 'invalid_credentials', '用户名或密码不对');
   }
+  await purgeExpiredSessions();
   const token = await createSession(row.id);
   return { token, user: toAuthUser(row) };
 }
 
 async function createSession(userId: string): Promise<string> {
-  // 生成原始 token 只在响应里出现一次，库里只留摘要。
+  // 生成原始 token 只在响应里出现一次，库里只留摘要；顺手清掉过期会话行。
   const token = newSessionToken();
   await pool.query(
     `INSERT INTO auth_sessions (token_hash, user_id, expires_at)
@@ -63,6 +65,11 @@ async function createSession(userId: string): Promise<string> {
     [tokenDigest(token), userId],
   );
   return token;
+}
+
+/// 清理已过期的会话行；在登录和校验 token 时顺带执行，避免表无限膨胀。
+async function purgeExpiredSessions(): Promise<void> {
+  await pool.query('DELETE FROM auth_sessions WHERE expires_at < now()').catch(() => undefined);
 }
 
 /// 按 token 摘要找用户；过期或不存在返回 null。
@@ -110,7 +117,8 @@ export async function changePassword(
 
 /// 管理员重置他人密码：生成临时密码并要求下次登录修改。
 export async function adminResetPassword(userId: string): Promise<string> {
-  const temp = `study-${Math.random().toString(36).slice(2, 10)}`;
+  // 临时密码是安全凭据，必须用密码学随机源，不能用 Math.random。
+  const temp = `study-${randomBytes(6).toString('base64url')}`;
   const result = await pool.query(
     `UPDATE users
         SET password_hash = $2, must_change_password = true, updated_at = now()

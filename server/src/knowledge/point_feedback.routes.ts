@@ -27,7 +27,6 @@ const createCorrectionSchema = pointRefSchema.extend({
 
 const reviewSchema = z.object({
   correctionId: z.string().uuid(),
-  reviewerDeviceId: z.string().uuid(),
   approve: z.boolean(),
   points: z.number().int().min(0).max(1000).optional().default(0),
 });
@@ -89,9 +88,11 @@ export async function pointFeedbackRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/api/knowledge/points/corrections/review', { preHandler: requireAdmin }, async (request) => {
     const input = parseOrThrow(reviewSchema, request.body);
+    // 审核人身份取自登录的管理员，不再信任请求体里自报的 deviceId。
+    const reviewer = request.authUser!;
     const correction = await repository.reviewCorrection(
       input.correctionId,
-      input.reviewerDeviceId,
+      reviewer.id,
       input.approve,
       input.approve ? CORRECTION_REWARD_POINTS : 0,
     );

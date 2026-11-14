@@ -182,8 +182,9 @@ class HttpSageApi implements SageApi {
     String path, {
     Object? body,
   }) async {
+    HttpClientRequest? request;
     try {
-      final request = await _client
+      request = await _client
           .openUrl(method, Uri.parse('$_baseUrl$path'))
           .timeout(_timeout);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
@@ -192,12 +193,21 @@ class HttpSageApi implements SageApi {
         request.write(jsonEncode(body));
       }
       final response = await request.close().timeout(_timeout);
+      request = null; // 连接已交给响应，超时时不再中止。
       final text = await response
           .transform(utf8.decoder)
           .join()
-          .timeout(_timeout);
+          .timeout(_timeout, onTimeout: () {
+        // 超时主动断开，避免慢响应占满 keep-alive 连接。
+        response.detachSocket().ignore();
+        return '';
+      });
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw SageApiException(_errorMessage(text, response.statusCode));
+      }
+      if (text.isEmpty) {
+        // 204 等空成功响应合法，当空对象处理。
+        return <String, Object?>{};
       }
       final decoded = jsonDecode(text);
       if (decoded is! Map) {
@@ -209,11 +219,15 @@ class HttpSageApi implements SageApi {
     } on SocketException {
       throw SageApiException('连不上本地服务，请确认服务已启动');
     } on TimeoutException {
+      // 请求阶段超时时中止底层连接，避免 socket 泄漏。
+      request?.abort();
       throw SageApiException('请求超时，请稍后再试');
     } on FormatException {
       throw SageApiException('接口返回的内容无法解析');
     } on HttpException {
       throw SageApiException('网络请求失败，请稍后再试');
+    } on HandshakeException {
+      throw SageApiException('安全连接建立失败，请稍后再试');
     }
   }
 

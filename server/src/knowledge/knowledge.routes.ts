@@ -1,8 +1,30 @@
-﻿import type { FastifyInstance } from 'fastify';
+﻿import { createHash } from 'node:crypto';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAdmin } from '../auth/auth.hooks.js';
 import { HttpError } from '../http/errors.js';
 import { createCategory, createConcept, addKnowledgePoint, loadKnowledgeBundle, updateCategory } from './knowledge.repository.js';
+
+/// 知识包内存缓存：包体大且不常变，重建一次多请求复用；内容写入路由会失效。
+let bundleCache: { body: unknown; etag: string } | null = null;
+
+function invalidateBundleCache(): void {
+  bundleCache = null;
+}
+
+/// 供其他模块（如智者贡献）在写入知识表后失效缓存。
+export function invalidateKnowledgeBundleCache(): void {
+  invalidateBundleCache();
+}
+
+async function bundleWithEtag(): Promise<{ body: unknown; etag: string }> {
+  if (!bundleCache) {
+    const body = await loadKnowledgeBundle();
+    const etag = `"${createHash('sha256').update(JSON.stringify(body)).digest('hex')}"`;
+    bundleCache = { body, etag };
+  }
+  return bundleCache;
+}
 
 const createCategorySchema = z.object({
   id: z.string().trim().min(1).max(64),
@@ -48,9 +70,14 @@ const createPointSchema = z.object({
 
 /// 知识库接口：返回全部内容；支持创建可嵌套子类（父类/子类）与把知识直接挂到分类下。
 export async function knowledgeRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/api/knowledge', async (_request, reply) => {
-    const bundle = await loadKnowledgeBundle();
-    return reply.header('cache-control', 'no-store').send(bundle);
+  app.get('/api/knowledge', async (request, reply) => {
+    const { body, etag } = await bundleWithEtag();
+    reply.header('etag', etag);
+    reply.header('cache-control', 'no-cache');
+    if (request.headers['if-none-match'] === etag) {
+      return reply.code(304).send();
+    }
+    return reply.send(body);
   });
 
   app.post('/api/knowledge/categories', { preHandler: requireAdmin }, async (request) => {
@@ -61,6 +88,7 @@ export async function knowledgeRoutes(app: FastifyInstance): Promise<void> {
     }
     try {
       const category = await createCategory(parsed.data);
+      invalidateBundleCache();
       return { category };
     } catch (error) {
       const e = error as { statusCode?: number; code?: string };
@@ -89,6 +117,7 @@ export async function knowledgeRoutes(app: FastifyInstance): Promise<void> {
     }
     try {
       const category = await updateCategory({ id, ...parsed.data });
+      invalidateBundleCache();
       return { category };
     } catch (error) {
       if ((error as { statusCode?: number }).statusCode === 404) {
@@ -105,6 +134,7 @@ export async function knowledgeRoutes(app: FastifyInstance): Promise<void> {
       throw new HttpError(400, 'invalid_request', issue ? `${issue.path.join('.') || 'body'}: ${issue.message}` : '请求参数不对');
     }
     const concept = await createConcept(parsed.data);
+    invalidateBundleCache();
     return { concept };
   });
 
@@ -115,6 +145,7 @@ export async function knowledgeRoutes(app: FastifyInstance): Promise<void> {
       throw new HttpError(400, 'invalid_request', issue ? `${issue.path.join('.') || 'body'}: ${issue.message}` : '请求参数不对');
     }
     const point = await addKnowledgePoint(parsed.data);
+    invalidateBundleCache();
     return { point };
   });
 }

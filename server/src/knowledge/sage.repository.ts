@@ -103,16 +103,25 @@ export async function createContribution(
     await client.query('BEGIN');
     await touchDevice(client, deviceId);
 
-    // 领域、年龄档、程度必须真实存在；错误的知识放不进知识库。
-    const reference = await client.query<{ domain: string; band: string; degree: string }>(
-      `SELECT
-         (SELECT 1 FROM knowledge_domains WHERE id = $1) AS domain,
-         (SELECT 1 FROM knowledge_age_bands WHERE id = $2) AS band,
-         (SELECT 1 FROM knowledge_degrees WHERE id = $3) AS degree`,
-      [input.domainId, input.ageBandId, input.degreeId],
+    // 016 迁移后「领域」层已并入分类树：客户端传的 domainId 是旧领域 id，
+    // 迁移时领域 id 沿用为分类 id（撞名则加 cat_ 前缀），两种都接受。
+    const reference = await client.query<{ category: string | null }>(
+      `SELECT (
+         SELECT id FROM knowledge_categories
+          WHERE id = $1 OR id = 'cat_' || $1
+          ORDER BY CASE WHEN id = $1 THEN 0 ELSE 1 END
+          LIMIT 1
+       ) AS category`,
+      [input.domainId],
     );
-    const refs = reference.rows[0];
-    if (!refs || refs.domain == null || refs.band == null || refs.degree == null) {
+    const categoryId = reference.rows[0]?.category ?? null;
+    const band = await client.query('SELECT 1 FROM knowledge_age_bands WHERE id = $1', [
+      input.ageBandId,
+    ]);
+    const degree = await client.query('SELECT 1 FROM knowledge_degrees WHERE id = $1', [
+      input.degreeId,
+    ]);
+    if (!categoryId || band.rowCount === 0 || degree.rowCount === 0) {
       throw new HttpError(400, 'unknown_reference', '领域、年龄档或程度不存在');
     }
 
@@ -123,26 +132,26 @@ export async function createContribution(
     let position: number | null = null;
 
     if (input.kind === 'knowledge') {
-      // 新知识：id 用随机后缀避免冲突，深度排在领域当前最深处之后。
+      // 新知识：id 用随机后缀避免冲突，深度排在分类当前最深处之后。
       const created = await client.query<{ id: string; depth: number; sort_order: number }>(
-        `INSERT INTO knowledge_concepts (id, domain_id, depth, sort_order)
+        `INSERT INTO knowledge_concepts (id, category_id, depth, sort_order)
          SELECT 'sage_' || substr(gen_random_uuid()::text, 1, 8), $1,
-                COALESCE((SELECT max(depth) + 1 FROM knowledge_concepts WHERE domain_id = $1), 0),
-                COALESCE((SELECT max(sort_order) + 1 FROM knowledge_concepts WHERE domain_id = $1), 1)
+                COALESCE((SELECT max(depth) + 1 FROM knowledge_concepts WHERE category_id = $1), 0),
+                COALESCE((SELECT max(sort_order) + 1 FROM knowledge_concepts WHERE category_id = $1), 1)
          RETURNING id, depth, sort_order`,
-        [input.domainId],
+        [categoryId],
       );
       const concept = created.rows[0];
       conceptId = concept.id;
 
-      // 本档呈现：缺省时用领域符号，提问与回应先用已知的内容占位。
+      // 本档呈现：缺省时用分类符号，提问与回应先用已知的内容占位。
       const variant = await client.query(
         `INSERT INTO knowledge_variants
            (concept_id, age_band_id, topic, glyph, doing, praise, check_question, answer, note)
-         SELECT $1, $2, $3, d.glyph, $4, $4, $5, $5, $6
-           FROM knowledge_domains d
-          WHERE d.id = $7`,
-        [conceptId, input.ageBandId, input.topic, doing ?? input.topic, note ?? doing ?? input.topic, note, input.domainId],
+         SELECT $1, $2, $3, c.glyph, $4, $4, $5, $5, $6
+           FROM knowledge_categories c
+          WHERE c.id = $7`,
+        [conceptId, input.ageBandId, input.topic, doing ?? input.topic, note ?? doing ?? input.topic, note, categoryId],
       );
       if (variant.rowCount === 0) {
         throw new HttpError(400, 'unknown_reference', '领域不存在');

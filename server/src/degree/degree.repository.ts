@@ -93,27 +93,37 @@ export async function submitApplication(
   targetRealm: string,
   evidence: Record<string, unknown>,
 ): Promise<DegreeApplication> {
+  // 检查 + 插入放在同一事务里，并配合 025 迁移的部分唯一索引，
+  // 防止并发提交绕过「同时只允许一条待审申请」的规则。
+  const client = await pool.connect();
   try {
-    // 同一用户同时只允许一条待审申请。
-    const pending = await pool.query(
-      `SELECT 1 FROM degree_applications WHERE user_id = $1 AND status = 'pending'`,
+    await client.query('BEGIN');
+    const pending = await client.query(
+      `SELECT 1 FROM degree_applications WHERE user_id = $1 AND status = 'pending' FOR UPDATE`,
       [userId],
     );
     if (pending.rowCount && pending.rowCount > 0) {
       throw new HttpError(409, 'application_pending', '已有一条待审核的学位申请');
     }
-    const result = await pool.query<ApplicationRow>(
+    const result = await client.query<ApplicationRow>(
       `INSERT INTO degree_applications (user_id, target_realm, evidence)
        VALUES ($1, $2, $3)
        RETURNING id, user_id, target_realm, evidence, status, created_at, reviewed_at`,
       [userId, targetRealm, JSON.stringify(evidence)],
     );
+    await client.query('COMMIT');
     return toApplication(result.rows[0]);
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
     if ((error as { code?: string }).code === '42P01') {
       throw new HttpError(503, 'migration_required', '学位功能尚未启用，请先执行数据库迁移');
     }
+    if ((error as { code?: string }).code === '23505') {
+      throw new HttpError(409, 'application_pending', '已有一条待审核的学位申请');
+    }
     throw error;
+  } finally {
+    client.release();
   }
 }
 

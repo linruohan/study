@@ -36,9 +36,11 @@ class ArchiveStore {
   }
 
   /// 列出文档目录里已有的导出副本，按修改时间从新到旧。
+  /// 用异步 stat 批量取时间，避免主 isolate 上逐文件同步 IO。
   Future<List<File>> listExportedCopies() async {
     final directory = _directory ?? await getApplicationDocumentsDirectory();
     final files = <File>[];
+    final stats = <File, DateTime>{};
     await for (final entity in directory.list()) {
       if (entity is File &&
           entity.path.contains('study_archive_') &&
@@ -46,7 +48,12 @@ class ArchiveStore {
         files.add(entity);
       }
     }
-    files.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+    await Future.wait([
+      for (final file in files)
+        file.stat().then((stat) => stats[file] = stat.modified),
+    ]);
+    files.sort((a, b) => (stats[b] ?? DateTime.fromMillisecondsSinceEpoch(0))
+        .compareTo(stats[a] ?? DateTime.fromMillisecondsSinceEpoch(0)));
     return files;
   }
 

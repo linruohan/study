@@ -59,7 +59,7 @@ const recordSchema = z
     at: z.coerce.date(),
     source: z.string().trim().min(1).max(50),
     subject: z.string().trim().min(1).max(200),
-    body: z.string().trim().min(1).max(20_000),
+    body: z.string().trim().min(1).max(5_000),
     conceptId: z.string().trim().min(1).nullable().optional(),
     domainId: z.string().trim().min(1).nullable().optional(),
     ageBandId: z.string().trim().min(1).nullable().optional(),
@@ -77,8 +77,8 @@ const recordSchema = z
 
 const userDataSchema = z.object({
   profile: profileSchema.default({ band: null, focusDomainId: null, focusCategoryId: null }),
-  plans: z.array(planSchema).max(2000).default([]),
-  records: z.array(recordSchema).max(50_000).default([]),
+  plans: z.array(planSchema).max(500).default([]),
+  records: z.array(recordSchema).max(5_000).default([]),
 });
 
 /// 校验并返回数据；不通过就转成 400。

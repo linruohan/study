@@ -13,6 +13,8 @@ async function main(): Promise<void> {
   const pool = new Pool({ connectionString: config.databaseUrl });
   const client = await pool.connect();
   try {
+    // 会话级 advisory lock：两个实例同时启动迁移时只会有一个真正执行。
+    await client.query('SELECT pg_advisory_lock(918273645)');
     await client.query(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         filename text PRIMARY KEY,
@@ -57,6 +59,7 @@ async function main(): Promise<void> {
 
     console.log('数据库迁移完成');
   } finally {
+    await client.query('SELECT pg_advisory_unlock(918273645)').catch(() => undefined);
     client.release();
     await pool.end();
   }

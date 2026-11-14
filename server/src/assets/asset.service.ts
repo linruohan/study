@@ -103,6 +103,10 @@ export async function createMediaAsset(input: {
       '只支持图片、音频、视频；纯文本请走 POST /api/assets/text',
     );
   }
+  // SVG 可以内嵌脚本，内联展示会变成存储型 XSS，不接受上传。
+  if (input.mimeType.toLowerCase().includes('svg')) {
+    throw new HttpError(415, 'unsupported_media_type', '不支持上传 SVG 素材');
+  }
   if (input.buffer.byteLength === 0) {
     throw new HttpError(400, 'empty_file', '文件是空的，换一个再传');
   }
@@ -160,13 +164,15 @@ export async function listAssets(filter: {
   return repository.listAssets(filter);
 }
 
-/// 删除素材：先删对象，再删记录。
+/// 删除素材：先删记录，再删对象；对象删失败只记日志，避免库里留着指向已删对象的死记录。
 export async function deleteAsset(id: string): Promise<void> {
   const asset = await getAssetOrThrow(id);
-  if (asset.objectKey) {
-    await deleteObject(asset.objectKey);
-  }
   await repository.removeAsset(id);
+  if (asset.objectKey) {
+    await deleteObject(asset.objectKey).catch((error: unknown) => {
+      console.error(`[assets] 对象删除失败（记录已删）: ${asset.objectKey}`, error);
+    });
+  }
 }
 
 /// 生成媒体素材的短期访问地址。

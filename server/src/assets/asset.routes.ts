@@ -1,6 +1,7 @@
 import { extname } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { requireAuth } from '../auth/auth.hooks.js';
 import { HttpError } from '../http/errors.js';
 import * as service from './asset.service.js';
 
@@ -70,9 +71,10 @@ function parseMetadata(raw: string | undefined): Record<string, unknown> {
 }
 
 /// 素材相关接口：上传、列表、详情、取内容、删除。
+/// 读操作（列表/详情/内容）保持匿名开放；写操作（上传/删除）需要登录。
 export async function assetRoutes(app: FastifyInstance): Promise<void> {
   // 纯文本：正文直接入库。
-  app.post('/api/assets/text', async (request, reply) => {
+  app.post('/api/assets/text', { preHandler: requireAuth }, async (request, reply) => {
     const input = parseOrThrow(textAssetSchema, request.body);
     const asset = await service.createTextAsset(input);
     return reply
@@ -81,7 +83,7 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // 图片、音频、视频：multipart 上传，字段名 file。
-  app.post('/api/assets', async (request, reply) => {
+  app.post('/api/assets', { preHandler: requireAuth }, async (request, reply) => {
     const file = await request.file();
     if (!file) {
       throw new HttpError(
@@ -150,7 +152,7 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // 删除：对象和记录一起清掉。
-  app.delete('/api/assets/:id', async (request, reply) => {
+  app.delete('/api/assets/:id', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = parseOrThrow(idParamsSchema, request.params);
     await service.deleteAsset(id);
     return reply.code(204).send();

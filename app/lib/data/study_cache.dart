@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:path_provider/path_provider.dart';
 
@@ -57,7 +58,9 @@ class FileStudyCache implements StudyCache {
       return null;
     }
     try {
-      final decoded = jsonDecode(await file.readAsString());
+      // 整包 JSON 可能很大，解码放到后台 isolate，避免启动时卡住 UI。
+      final path = file.path;
+      final decoded = await Isolate.run(() => jsonDecode(File(path).readAsStringSync()));
       if (decoded is! Map) {
         return null;
       }
@@ -84,19 +87,26 @@ class FileStudyCache implements StudyCache {
   }) async {
     final file = await _file();
     final temp = File('${file.path}.tmp');
-    await temp.writeAsString(
-      jsonEncode({
-        'version': 1,
-        'knowledge': knowledge,
-        'userData': userData,
-        'pending': pending,
-      }),
-      flush: true,
-    );
-    if (await file.exists()) {
-      await file.delete();
-    }
-    await temp.rename(file.path);
+    // 整包编码 + 落盘都在后台 isolate 做；缓存整包很大，主 isolate 编码会掉帧。
+    final tempPath = temp.path;
+    final finalPath = file.path;
+    await Isolate.run(() {
+      final tempFile = File(tempPath);
+      tempFile.writeAsStringSync(
+        jsonEncode({
+          'version': 1,
+          'knowledge': knowledge,
+          'userData': userData,
+          'pending': pending,
+        }),
+        flush: true,
+      );
+      final target = File(finalPath);
+      if (target.existsSync()) {
+        target.deleteSync();
+      }
+      tempFile.renameSync(finalPath);
+    });
   }
 
   @override

@@ -17,8 +17,25 @@ class FileDeviceIdStore implements DeviceIdStore {
 
   final Directory? _directory;
 
+  /// 进行中的读取；并发 read() 共享同一次生成，避免写出两个不同的 id。
+  Future<String>? _inFlight;
+
   @override
-  Future<String> read() async {
+  Future<String> read() {
+    // 多个调用并发进来时复用第一个读取，防止 check-then-write 竞态生成两个 UUID。
+    final existing = _inFlight;
+    if (existing != null) {
+      return existing;
+    }
+    final future = _readUnlocked().catchError((Object error) {
+      _inFlight = null;
+      throw error;
+    });
+    _inFlight = future;
+    return future;
+  }
+
+  Future<String> _readUnlocked() async {
     final directory = _directory ?? await getApplicationDocumentsDirectory();
     final file = File('${directory.path}${Platform.pathSeparator}device_id.txt');
     if (await file.exists()) {

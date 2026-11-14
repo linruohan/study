@@ -1,4 +1,4 @@
-import { pool } from '../db.js';
+import { pool, type PoolClient } from '../db.js';
 import { HttpError } from '../http/errors.js';
 import type { PlanDto, UserDataDto } from './me.types.js';
 
@@ -81,7 +81,32 @@ export async function loadUserData(deviceId: string): Promise<UserDataDto> {
   };
 }
 
+/// 把一批参数列表拼成多行 INSERT 执行；分批避免单条语句参数超过上限。
+async function insertBatches(
+  client: PoolClient,
+  sql: string,
+  columnsPerRow: number,
+  rows: unknown[][],
+): Promise<void> {
+  const batchSize = Math.floor(65_000 / columnsPerRow);
+  for (let start = 0; start < rows.length; start += batchSize) {
+    const batch = rows.slice(start, start + batchSize);
+    const values: unknown[] = [];
+    const placeholders = batch
+      .map((row) => {
+        const rowPlaceholders = row.map((value) => {
+          values.push(value);
+          return `$${values.length}`;
+        });
+        return `(${rowPlaceholders.join(', ')})`;
+      })
+      .join(', ');
+    await client.query(`${sql} VALUES ${placeholders}`, values);
+  }
+}
+
 /// 用客户端整份快照替换一台设备的数据，事务内完成，失败全部回滚。
+/// 计划/记录用多行 INSERT 分批写入，避免逐行往返占满连接池。
 export async function saveUserData(
   deviceId: string,
   data: UserDataDto,
@@ -106,49 +131,47 @@ export async function saveUserData(
     );
 
     await client.query('DELETE FROM study_plans WHERE device_id = $1', [deviceId]);
-    for (const plan of data.plans) {
-      await client.query(
-        `INSERT INTO study_plans
-           (device_id, id, domain_id, depth, concept_id, degree_id, start_at,
-            remind, done, reminded_at, snoozed_until)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-        [
-          deviceId,
-          plan.id,
-          plan.domainId,
-          plan.depth,
-          plan.conceptId,
-          plan.degree,
-          plan.startAt,
-          plan.remind,
-          plan.done,
-          plan.remindedAt,
-          plan.snoozedUntil,
-        ],
-      );
-    }
+    await insertBatches(
+      client,
+      `INSERT INTO study_plans
+         (device_id, id, domain_id, depth, concept_id, degree_id, start_at,
+          remind, done, reminded_at, snoozed_until)`,
+      11,
+      data.plans.map((plan) => [
+        deviceId,
+        plan.id,
+        plan.domainId,
+        plan.depth,
+        plan.conceptId,
+        plan.degree,
+        plan.startAt,
+        plan.remind,
+        plan.done,
+        plan.remindedAt,
+        plan.snoozedUntil,
+      ]),
+    );
 
     await client.query('DELETE FROM learning_records WHERE device_id = $1', [
       deviceId,
     ]);
-    for (const record of data.records) {
-      await client.query(
-        `INSERT INTO learning_records
-           (device_id, id, at, source, subject, body, concept_id, domain_id, age_band_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [
-          deviceId,
-          record.id,
-          record.at,
-          record.source,
-          record.subject,
-          record.body,
-          record.conceptId,
-          record.domainId,
-          record.ageBandId,
-        ],
-      );
-    }
+    await insertBatches(
+      client,
+      `INSERT INTO learning_records
+         (device_id, id, at, source, subject, body, concept_id, domain_id, age_band_id)`,
+      9,
+      data.records.map((record) => [
+        deviceId,
+        record.id,
+        record.at,
+        record.source,
+        record.subject,
+        record.body,
+        record.conceptId,
+        record.domainId,
+        record.ageBandId,
+      ]),
+    );
 
     await client.query('COMMIT');
   } catch (error) {

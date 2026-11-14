@@ -139,12 +139,12 @@ cd app && flutter test
 | GET | `/api/degree/applications/mine` | 我的申请记录 |
 | GET | `/api/degree/applications` | 申请列表（仅管理员，`status=pending` 等） |
 | POST | `/api/degree/applications/:id/review` | 审核学位申请，通过即提升境界（仅管理员） |
-| POST | `/api/assets/text` | 新建纯文本素材（正文直接入库） |
-| POST | `/api/assets` | 上传图片/音频/视频（multipart） |
-| GET | `/api/assets` | 列表，支持 `kind`、`limit`、`offset` |
-| GET | `/api/assets/:id` | 素材详情 |
-| GET | `/api/assets/:id/content` | 取内容（文本回正文，二进制返回预签名地址） |
-| DELETE | `/api/assets/:id` | 删除素材 |
+| POST | `/api/assets/text` | 新建纯文本素材（正文直接入库；**需登录**） |
+| POST | `/api/assets` | 上传图片/音频/视频（multipart；**需登录**，不接受 SVG） |
+| GET | `/api/assets` | 列表，支持 `kind`、`limit`、`offset`（匿名可读） |
+| GET | `/api/assets/:id` | 素材详情（匿名可读） |
+| GET | `/api/assets/:id/content` | 取内容（文本回正文，二进制返回预签名地址；匿名可读） |
+| DELETE | `/api/assets/:id` | 删除素材（**需登录**） |
 | GET | `/api/knowledge` | 知识库整包：分类树（父类/子类）、概念、分龄呈现、知识点、章节、sageCredits |
 | POST | `/api/knowledge/categories` | 新建分类/子类（`parentId` 可嵌套；未迁移时 503 `migration_required`） |
 | PATCH | `/api/knowledge/categories/:id` | 分类改名 |
@@ -159,6 +159,12 @@ cd app && flutter test
 | GET/PUT | `/api/devices/:deviceId/sage` | 智者名读取/保存 |
 | POST | `/api/devices/:deviceId/sage/contributions` | 智者贡献（提交即审批） |
 | GET/PUT | `/api/devices/:deviceId/data` | 设备数据整包读写（事务内替换 + 知识引用校验） |
+| GET | `/api/plan-schemes` | 学习计划方案列表：内置 23 个方案（蒙学、小学一年级……硕三）+ 本人自建 |
+| GET | `/api/plan-schemes/:id` | 方案详情（维度 + 条目，条目可关联知识概念；内置公开，自建仅创建者） |
+| POST | `/api/plan-schemes` | 创建自建方案（需登录） |
+| PUT | `/api/plan-schemes/:id` | 更新自建方案（整体替换维度/条目；仅创建者） |
+| DELETE | `/api/plan-schemes/:id` | 删除自建方案（仅创建者；内置不可删） |
+| POST | `/api/plan-schemes/:id/clone` | 复制方案为本人自建（内置副本名加「（副本）」） |
 
 ### 运行
 

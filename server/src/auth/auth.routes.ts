@@ -26,6 +26,15 @@ const roleSchema = z.object({
   role: z.enum(['user', 'admin']),
 });
 
+const listQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+const idParamsSchema = z.object({
+  id: z.string().uuid('用户 id 不是合法的 UUID'),
+});
+
 /// 登录与会话接口；用户管理接口仅管理员可用。
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/auth/login', async (request) => {
@@ -63,27 +72,35 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/api/users', { preHandler: requireAdmin }, async (request) => {
-    const query = request.query as { limit?: string; offset?: string };
-    const users = await listUsers(
-      query.limit ? Number.parseInt(query.limit, 10) : undefined,
-      query.offset ? Number.parseInt(query.offset, 10) : undefined,
-    );
+    const parsed = listQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      throw new HttpError(400, 'invalid_request', 'limit/offset 需要是合法数字');
+    }
+    const users = await listUsers(parsed.data.limit, parsed.data.offset);
     return { users };
   });
 
   app.patch('/api/users/:id/role', { preHandler: requireAdmin }, async (request) => {
-    const { id } = request.params as { id: string };
+    const parsedParams = idParamsSchema.safeParse(request.params);
     const parsed = roleSchema.safeParse(request.body);
-    if (!parsed.success) {
-      throw new HttpError(400, 'invalid_request', 'role 必须是 user 或 admin');
+    if (!parsedParams.success || !parsed.success) {
+      throw new HttpError(400, 'invalid_request', '参数不对：id 需是 UUID，role 必须是 user 或 admin');
     }
-    await setUserRole(id, parsed.data.role);
+    // 不允许管理员修改自己的角色，避免最后一个管理员把自己降级后系统无人管理。
+    const admin = request.authUser!;
+    if (parsedParams.data.id === admin.id) {
+      throw new HttpError(403, 'forbidden', '不能修改自己的角色');
+    }
+    await setUserRole(parsedParams.data.id, parsed.data.role);
     return { ok: true };
   });
 
   app.post('/api/users/:id/reset-password', { preHandler: requireAdmin }, async (request) => {
-    const { id } = request.params as { id: string };
-    const tempPassword = await adminResetPassword(id);
+    const parsedParams = idParamsSchema.safeParse(request.params);
+    if (!parsedParams.success) {
+      throw new HttpError(400, 'invalid_request', '用户 id 不是合法的 UUID');
+    }
+    const tempPassword = await adminResetPassword(parsedParams.data.id);
     return { tempPassword };
   });
 }

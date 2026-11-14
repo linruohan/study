@@ -20,6 +20,15 @@ async function main(): Promise<void> {
 
   process.on('SIGINT', () => void shutdown('SIGINT'));
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
+
+  // 兜底：未处理的 promise 拒绝记日志不退出；未捕获异常记日志后走优雅关闭。
+  process.on('unhandledRejection', (reason) => {
+    app.log.error({ err: reason }, '未处理的 promise 拒绝');
+  });
+  process.on('uncaughtException', (error) => {
+    app.log.error({ err: error }, '未捕获异常，准备退出');
+    void shutdown('uncaughtException');
+  });
 }
 
 main().catch((error: unknown) => {

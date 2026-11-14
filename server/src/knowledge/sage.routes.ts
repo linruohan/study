@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { HttpError } from '../http/errors.js';
+import { invalidateKnowledgeBundleCache } from './knowledge.routes.js';
 import * as repository from './sage.repository.js';
 
 /// 设备 id 放在路径里，必须是 UUID。
@@ -75,6 +76,8 @@ export async function sageRoutes(app: FastifyInstance): Promise<void> {
     const { deviceId } = parseOrThrow(deviceParamsSchema, request.params);
     const input = parseOrThrow(contributionSchema, request.body);
     const contribution = await repository.createContribution(deviceId, input);
+    // 贡献通过后知识包内容会变，让 ETag 缓存失效。
+    invalidateKnowledgeBundleCache();
     return { contribution };
   });
 }
