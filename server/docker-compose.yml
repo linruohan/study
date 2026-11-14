@@ -22,20 +22,20 @@ services:
       retries: 20
 
   # 对象存储：图片、音频、视频本体都放这里，库里只存 object_key。
-  minio:
-    image: minio/minio:latest
-    container_name: study-minio
+  # 说明：MinIO 官方镜像在当前网络环境不可拉取，改用 S3 协议兼容的
+  # SeaweedFS（weed server 一体化模式，S3 端口同为 9000）；
+  # 配置走 .env，换回 MinIO 只需改本文件镜像与 command。
+  storage:
+    image: docker.1ms.run/chrislusf/seaweedfs:3.80
+    container_name: study-storage
     restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: study_minio
-      MINIO_ROOT_PASSWORD: study_minio_secret
+    command: "server -dir=/data -ip=0.0.0.0 -master.volumeSizeLimitMB=1024 -s3 -s3.port=9000"
     ports:
       - "9000:9000" # S3 API
-      - "9001:9001" # 管理控制台
+      - "9333:9333" # master 管理页
     volumes:
-      - minio-data:/data
+      - storage-data:/data
 
 volumes:
   postgres-data:
-  minio-data:
+  storage-data:

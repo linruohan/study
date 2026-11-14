@@ -59,7 +59,7 @@ study/
 powershell -ExecutionPolicy Bypass -File .\scripts\start-dev.ps1
 ```
 
-脚本会依次启动 Docker 中的 PostgreSQL 16 与 MinIO（`server/docker-compose.yml`）、检查 Node 依赖并启动 Fastify API，再安装 Flutter 依赖并打开 Windows 应用。只有 API 的 `/healthz` 确认数据库和对象存储都正常后才会打开应用；任一强依赖失败都会显示红色错误并终止，不会带病继续启动。
+脚本会依次启动 Docker 中的 PostgreSQL 16 与 SeaweedFS（`server/docker-compose.yml`）、检查 Node 依赖并启动 Fastify API，再安装 Flutter 依赖并打开 Windows 应用。只有 API 的 `/healthz` 确认数据库和对象存储都正常后才会打开应用；任一强依赖失败都会显示红色错误并终止，不会带病继续启动。
 
 前置要求：已安装并启动 Docker Desktop、Node.js ≥ 20；Flutter 之外无需 WSL 或本地数据库。
 
@@ -115,7 +115,7 @@ cd app && flutter test
 
 ## 素材服务 server/
 
-纸本学习应用的素材服务：PostgreSQL 存元数据与纯文本，MinIO 存图片/音频/视频本体，库里只存 `object_key`，内容通过预签名地址获取。
+纸本学习应用的素材服务：PostgreSQL 存元数据与纯文本，SeaweedFS（S3 协议兼容，替代已停止维护的 MinIO）存图片/音频/视频本体，库里只存 `object_key`，内容通过预签名地址获取。
 
 - 运行时：Node.js ≥ 20，TypeScript + Fastify 5 + zod 校验
 - **权限**：普通用户只读；知识内容写接口（分类/知识/知识点/章节）与纠错审核仅管理员可用，未登录 401、普通用户 403。内置管理员 `admin/admin`，首次登录强制修改密码。评论、纠错提交与设备学习数据不要求登录。
@@ -163,7 +163,7 @@ cd app && flutter test
 ### 运行
 
 ```powershell
-# 1. 起依赖（PostgreSQL 16 + MinIO）
+# 1. 起依赖（PostgreSQL 16 + SeaweedFS）
 cd server
 docker compose up -d
 
@@ -190,7 +190,7 @@ npm start            # 运行 dist/index.js
 | --- | --- | --- |
 | `PORT` | `3000` | 服务端口 |
 | `DATABASE_URL` | `postgres://study:...@127.0.0.1:5432/study` | PostgreSQL 连接串 |
-| `S3_ENDPOINT` | `http://127.0.0.1:9000` | MinIO S3 地址 |
+| `S3_ENDPOINT` | `http://127.0.0.1:9000` | SeaweedFS S3 地址 |
 | `S3_BUCKET` | `study-assets` | 桶名（启动时自动创建） |
 | `MAX_UPLOAD_MB` | `50` | 单文件上限 |
 | `SIGNED_URL_TTL_SECONDS` | `900` | 预签名地址有效期 |

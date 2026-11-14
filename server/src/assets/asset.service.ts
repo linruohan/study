@@ -87,7 +87,7 @@ export async function createTextAsset(input: {
   });
 }
 
-/// 新建一条媒体素材：文件先进 MinIO，再写元数据；写库失败就把对象删掉。
+/// 新建一条媒体素材：文件先进对象存储（SeaweedFS），再写元数据；写库失败就把对象删掉。
 export async function createMediaAsset(input: {
   buffer: Buffer;
   mimeType: string;
