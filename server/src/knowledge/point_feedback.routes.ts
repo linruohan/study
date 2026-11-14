@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAdmin } from '../auth/auth.hooks.js';
+import { invalidateKnowledgeBundleCache } from './knowledge.routes.js';
 import { HttpError } from '../http/errors.js';
 import * as repository from './point_feedback.repository.js';
 
@@ -96,6 +97,8 @@ export async function pointFeedbackRoutes(app: FastifyInstance): Promise<void> {
       input.approve,
       input.approve ? CORRECTION_REWARD_POINTS : 0,
     );
+    // 审核通过会把纠错写回知识点正文，知识包内容变了，让缓存失效。
+    invalidateKnowledgeBundleCache();
     return { correction };
   });
 

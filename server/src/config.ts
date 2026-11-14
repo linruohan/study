@@ -14,7 +14,8 @@ const envSchema = z.object({
   S3_ACCESS_KEY: z.string().min(1, 'S3_ACCESS_KEY 不能为空'),
   S3_SECRET_KEY: z.string().min(1, 'S3_SECRET_KEY 不能为空'),
   S3_BUCKET: z.string().min(3).default('study-assets'),
-  MAX_UPLOAD_MB: z.coerce.number().positive().max(2048).default(50),
+  // 上传走内存缓冲；超过 512MB 不该用整包缓冲（要改造成流式上传），把配置面收紧。
+  MAX_UPLOAD_MB: z.coerce.number().positive().max(512).default(50),
   SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().max(86400).default(900),
   CORS_ORIGIN: z.string().default('*'),
 });

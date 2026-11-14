@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAdmin } from '../auth/auth.hooks.js';
 import { HttpError } from '../http/errors.js';
+import { invalidateKnowledgeBundleCache } from './knowledge.routes.js';
 import * as repository from './chapter.repository.js';
 
 const refSchema = z.object({
@@ -40,6 +41,7 @@ export async function chapterRoutes(app: FastifyInstance): Promise<void> {
       { conceptId: input.conceptId, ageBandId: input.ageBandId, degreeId: input.degreeId, pointPosition: input.pointPosition },
       { title: input.title, content: input.content ?? null },
     );
+    invalidateKnowledgeBundleCache();
     return { chapter };
   });
 
@@ -59,6 +61,7 @@ export async function chapterRoutes(app: FastifyInstance): Promise<void> {
       input.chapterPosition,
       { title: input.title, content: input.content ?? null },
     );
+    invalidateKnowledgeBundleCache();
     return { chapter };
   });
 
@@ -68,6 +71,7 @@ export async function chapterRoutes(app: FastifyInstance): Promise<void> {
       { conceptId: input.conceptId, ageBandId: input.ageBandId, degreeId: input.degreeId, pointPosition: input.pointPosition },
       input.chapterPosition,
     );
+    invalidateKnowledgeBundleCache();
     return { ok: true };
   });
 }
