@@ -10,6 +10,8 @@ const ADMIN = 'test-admin';
 const USER = 'test-user';
 const PASSWORD = 'route-test-password';
 
+let createdCategoryId: string | null = null;
+
 async function seedUsers(): Promise<void> {
   await pool.query(
     `INSERT INTO users (username, password_hash, role, must_change_password)
@@ -27,6 +29,10 @@ test('routes: health, auth, write permission, degree, device data', { timeout: 6
   const http = await buildApp();
 
   t.after(async () => {
+    // 先清测试产物(分类垃圾),再关连接池。
+    if (createdCategoryId) {
+      await pool.query('DELETE FROM knowledge_categories WHERE id = $1', [createdCategoryId]);
+    }
     await http.close();
     await pool.end();
   });
@@ -72,13 +78,15 @@ test('routes: health, auth, write permission, degree, device data', { timeout: 6
     payload: { id: 'rt_cat_x', name: '路由测试' },
   });
   assert.equal(forbidden.statusCode, 403);
+  const categoryId = `rt_cat_${Date.now()}`;
   const created = await http.inject({
     method: 'POST',
     url: '/api/knowledge/categories',
     headers: { authorization: `Bearer ${adminToken}` },
-    payload: { id: `rt_cat_${Date.now()}`, name: '路由测试子类', parentId: 'education' },
+    payload: { id: categoryId, name: '路由测试子类', parentId: 'education' },
   });
   assert.equal(created.statusCode, 200, created.body);
+  createdCategoryId = created.json().category.id as string;
 
   // 4. 学位:普通用户申请,管理员审核通过后境界提升。
   const apply = await http.inject({
