@@ -3,7 +3,7 @@
 .SYNOPSIS
   一键启动「文明重启」开发环境。
 .DESCRIPTION
-  顺序：WSL(PostgreSQL + SeaweedFS) -> 数据库迁移 -> Fastify API -> Flutter 桌面应用。
+  顺序：Docker(PostgreSQL + MinIO) -> 数据库迁移 -> Fastify API -> Flutter 桌面应用。
   每一步都做健康检查，强依赖没起来会直接报错退出，
   避免出现「应用已经打开，服务器却还没起来」的情况。
 .EXAMPLE
@@ -22,7 +22,6 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $ServerDir = Join-Path $Root 'server'
 $AppDir = Join-Path $Root 'app'
-$WslDistro = 'Arch'
 $DbPort = 5432
 $StoragePort = 9000
 $ApiPort = 3000
@@ -46,12 +45,12 @@ function Stop-Startup([string]$Message) {
   exit 1
 }
 
-# 判断命令是否存在（wsl / node / npm / flutter）。
+# 判断命令是否存在（docker / node / npm / flutter）。
 function Test-CommandExists([string]$Name) {
   return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
-# 检查本机端口是否能连通，用来确认 WSL 里的服务真的可以被 Windows 访问。
+# 检查本机端口是否能连通，用来确认 Docker 容器映射的服务真的可以被 Windows 访问。
 function Test-TcpPort([int]$Port) {
   $client = New-Object System.Net.Sockets.TcpClient
   try {
@@ -126,10 +125,14 @@ function Show-LogTail([string]$Path, [int]$Lines = 30) {
 # 1. 前置检查：命令和配置文件缺了就没必要往下走。
 # ---------------------------------------------------------------------------
 Write-Step '检查本机命令与配置文件'
-foreach ($command in @('wsl', 'node', 'npm')) {
+foreach ($command in @('docker', 'node', 'npm')) {
   if (-not (Test-CommandExists $command)) {
     Stop-Startup "找不到 $command，请先安装并加入 PATH。"
   }
+}
+docker info *> $null
+if ($LASTEXITCODE -ne 0) {
+  Stop-Startup 'Docker 已安装但未运行(docker info 失败),请先启动 Docker Desktop。'
 }
 if (-not $ServerOnly -and -not (Test-CommandExists 'flutter')) {
   Stop-Startup '找不到 flutter，请先安装 Flutter SDK 并加入 PATH（或使用 -ServerOnly 只启动服务端）。'
@@ -137,51 +140,50 @@ if (-not $ServerOnly -and -not (Test-CommandExists 'flutter')) {
 if (-not (Test-Path (Join-Path $ServerDir '.env'))) {
   Stop-Startup "缺少 server/.env，请先执行：copy $ServerDir\.env.example $ServerDir\.env"
 }
-Write-Ready 'wsl / node / npm 与 server/.env 均正常'
+Write-Ready 'docker / node / npm 与 server/.env 均正常'
 
 # ---------------------------------------------------------------------------
-# 2. WSL 里的 PostgreSQL 与 SeaweedFS。
+# 2. Docker 里的 PostgreSQL 与 MinIO(server/docker-compose.yml)。
 # ---------------------------------------------------------------------------
-Write-Step "检查 WSL($WslDistro) 中的 PostgreSQL 与 SeaweedFS"
+Write-Step '启动 Docker 中的 PostgreSQL 与 MinIO'
 
-# PostgreSQL：能连通就不动它；连不上才重启服务，避免打断正常连接。
-if (Test-TcpPort $DbPort) {
-  Write-Ready "PostgreSQL 127.0.0.1:$DbPort 已在运行"
-} else {
-  wsl -d $WslDistro -u root -- systemctl restart postgresql
+Push-Location $ServerDir
+try {
+  docker compose up -d
   if ($LASTEXITCODE -ne 0) {
-    Stop-Startup "PostgreSQL 启动命令失败（退出码 $LASTEXITCODE），请检查 $WslDistro 发行版是否存在、systemd 是否启用。"
+    Stop-Startup 'docker compose up -d 失败,请检查 server/docker-compose.yml 与 Docker 状态。'
   }
-  if (-not (Wait-TcpPort $DbPort 60)) {
-    Stop-Startup @"
-PostgreSQL 端口 $DbPort 在 60 秒内仍无法从 Windows 连接。
-常见原因：WSL mirrored 网络下 Hyper-V 防火墙拦截，或 localhost 转发失效。
-可先尝试：wsl --shutdown 后重新运行本脚本；
-仍不行请在管理员 PowerShell 执行：
-  Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow
-"@
-  }
-  Write-Ready "PostgreSQL 127.0.0.1:$DbPort 可连接"
+} finally {
+  Pop-Location
 }
 
-# SeaweedFS：S3 没就绪时先停服务并清理残留 weed 进程，
-# 否则旧进程占着 9333，新实例会反复 bind 失败、永远起不来。
+# 等待 postgres 容器 healthcheck 变为 healthy(镜像自带 pg_isready 检查)。
+function Wait-ContainerHealthy([string]$Name, [int]$TimeoutSeconds) {
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    $status = docker inspect --format '{{.State.Health.Status}}' $Name 2>$null
+    if ($status -eq 'healthy') {
+      return $true
+    }
+    Start-Sleep -Seconds 2
+  }
+  return $false
+}
+
+if (-not (Wait-ContainerHealthy 'study-postgres' 60)) {
+  docker logs --tail 20 study-postgres
+  Stop-Startup "study-postgres 在 60 秒内未变为 healthy,上面是它的日志。可先执行 docker compose ps 看容器状态。"
+}
+Write-Ready "PostgreSQL(study-postgres) healthy,127.0.0.1:$DbPort 可连接"
+
+# MinIO 没有自带 healthcheck,用 S3 端口探测;首次拉镜像/初始化可能要一会儿。
 if (Test-TcpPort $StoragePort) {
-  Write-Ready "SeaweedFS S3 127.0.0.1:$StoragePort 已在运行"
+  Write-Ready "MinIO S3 127.0.0.1:$StoragePort 已在运行"
+} elseif (Wait-TcpPort $StoragePort 120) {
+  Write-Ready "MinIO S3 127.0.0.1:$StoragePort 可连接"
 } else {
-  wsl -d $WslDistro -u root -- systemctl stop seaweedfs
-  wsl -d $WslDistro -u root -- sh -c 'pkill -x weed || true'
-  Start-Sleep -Seconds 2
-  wsl -d $WslDistro -u root -- systemctl start seaweedfs
-  if ($LASTEXITCODE -ne 0) {
-    Stop-Startup "SeaweedFS 启动命令失败（退出码 $LASTEXITCODE），请检查 WSL 中的 seaweedfs.service。"
-  }
-  Write-Host '    SeaweedFS 首次启动要加载 volume 与 filer，通常需要 1~3 分钟，请稍候…'
-  if (-not (Wait-TcpPort $StoragePort 240)) {
-    wsl -d $WslDistro -u root -- journalctl -u seaweedfs -n 20 --no-pager
-    Stop-Startup "SeaweedFS S3 端口 $StoragePort 在 240 秒内未就绪，上面是它的启动日志。素材上传/预签名地址都依赖它，必须修好再启动。"
-  }
-  Write-Ready "SeaweedFS S3 127.0.0.1:$StoragePort 可连接"
+  docker logs --tail 20 study-minio
+  Stop-Startup "MinIO S3 端口 $StoragePort 在 120 秒内未就绪,上面是它的日志。素材上传/预签名地址都依赖它,必须修好再启动。"
 }
 
 # ---------------------------------------------------------------------------
@@ -197,7 +199,8 @@ if (-not (Test-Path (Join-Path $ServerDir 'node_modules'))) {
 Write-Ready 'node_modules 已就绪'
 if ($Migrate) {
   Write-Step '执行数据库迁移'
-  npm --prefix $ServerDir run db:migrate
+  $migrateTsx = Join-Path $ServerDir 'node_modules\tsx\dist\cli.mjs'
+  node $migrateTsx 'src/scripts/migrate.ts'
   if ($LASTEXITCODE -ne 0) {
     Stop-Startup "数据库迁移失败（退出码 $LASTEXITCODE）。请检查 server/.env 的 DATABASE_URL、数据库权限，以及迁移 SQL 与现有表的依赖关系。"
   }
@@ -214,9 +217,14 @@ if (Test-ApiHealth) {
   if (Test-TcpPort $ApiPort) {
     Stop-Startup "端口 $ApiPort 已被占用，但 /healthz 未通过。请先停掉占用该端口的旧进程，或检查它的日志。"
   }
-  $apiProcess = Start-Process -FilePath 'cmd.exe' `
-    -ArgumentList '/c', "npm run dev 1> `"$ApiLog`" 2> `"$ApiErrorLog`"" `
-    -WorkingDirectory $ServerDir -WindowStyle Hidden -PassThru
+  $tsxCli = Join-Path $ServerDir 'node_modules\tsx\dist\cli.mjs'
+  if (-not (Test-Path $tsxCli)) {
+    Stop-Startup "找不到 tsx（$tsxCli），请先执行：npm --prefix $ServerDir install"
+  }
+  $apiProcess = Start-Process -FilePath (Get-Command node).Source `
+    -ArgumentList $tsxCli, 'watch', 'src/index.ts' `
+    -WorkingDirectory $ServerDir -WindowStyle Hidden -PassThru `
+    -RedirectStandardOutput $ApiLog -RedirectStandardError $ApiErrorLog
   Write-Host "    API 后台进程 PID=$($apiProcess.Id)，日志：$ApiLog"
   if (-not (Wait-ApiHealth 60)) {
     Show-LogTail $ApiLog
@@ -226,6 +234,15 @@ if (Test-ApiHealth) {
   Write-Ready "API $ApiHealthUrl 返回 200（数据库 + 对象存储均正常）"
 }
 
+# 再等几秒复查一次，排除「刚通过健康检查就退出」的情况。
+Start-Sleep -Seconds 5
+if (-not (Test-ApiHealth)) {
+  Show-LogTail $ApiLog
+  Show-LogTail $ApiErrorLog
+  Stop-Startup 'API 复查失败，进程可能已退出（常见原因是数据库连接被中断）。'
+}
+Write-Ready 'API 稳定性复查通过'
+
 # ---------------------------------------------------------------------------
 # 5. Flutter 桌面应用：确认服务都好了才打开。
 # ---------------------------------------------------------------------------
@@ -233,21 +250,27 @@ if ($ServerOnly) {
   Write-Step 'ServerOnly 模式：不启动 Flutter 应用'
 } else {
   Write-Step '检查 Flutter 依赖'
+  # flutter 会把提示信息写到 stderr，先关掉 Stop 策略，避免被当成致命错误。
+  $previousPreference = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
   Push-Location $AppDir
   try {
-    flutter pub get
+    # 收集输出，成功时不刷屏，失败时再打印，方便定位问题。
+    $pubOutput = flutter pub get 2>&1
     $pubGetExitCode = $LASTEXITCODE
   } finally {
     Pop-Location
+    $ErrorActionPreference = $previousPreference
   }
   if ($pubGetExitCode -ne 0) {
+    $pubOutput | ForEach-Object { Write-Host "    $_" -ForegroundColor Yellow }
     Stop-Startup "flutter pub get 失败（退出码 $pubGetExitCode），请先解决 Flutter 依赖问题。"
   }
   Write-Ready 'Flutter 依赖已就绪'
 
   Write-Step '启动 Flutter Windows 应用'
   if (-not (Test-ApiHealth)) {
-    Stop-Startup '打开应用前复查 API 健康检查未通过，已停止启动 Flutter。请先根据前面的步骤检查 PostgreSQL、SeaweedFS 和 API。'
+    Stop-Startup '打开应用前复查 API 健康检查未通过，已停止启动 Flutter。请先根据前面的步骤检查 PostgreSQL、MinIO 和 API。'
   }
   if (Get-Process study_app -ErrorAction SilentlyContinue) {
     Write-Ready 'study_app 已在运行，跳过重复启动'

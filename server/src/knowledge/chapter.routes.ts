@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { requireAdmin } from '../auth/auth.hooks.js';
 import { HttpError } from '../http/errors.js';
 import * as repository from './chapter.repository.js';
 
@@ -33,7 +34,7 @@ export async function chapterRoutes(app: FastifyInstance): Promise<void> {
     return { chapters };
   });
 
-  app.post('/api/knowledge/points/chapters', async (request) => {
+  app.post('/api/knowledge/points/chapters', { preHandler: requireAdmin }, async (request) => {
     const input = parseOrThrow(createSchema, request.body);
     const chapter = await repository.addChapter(
       { conceptId: input.conceptId, ageBandId: input.ageBandId, degreeId: input.degreeId, pointPosition: input.pointPosition },
@@ -51,7 +52,7 @@ export async function chapterRoutes(app: FastifyInstance): Promise<void> {
     chapterPosition: z.coerce.number().int().min(1),
   });
 
-  app.put('/api/knowledge/points/chapters', async (request) => {
+  app.put('/api/knowledge/points/chapters', { preHandler: requireAdmin }, async (request) => {
     const input = parseOrThrow(updateSchema, request.body);
     const chapter = await repository.updateChapter(
       { conceptId: input.conceptId, ageBandId: input.ageBandId, degreeId: input.degreeId, pointPosition: input.pointPosition },
@@ -61,7 +62,7 @@ export async function chapterRoutes(app: FastifyInstance): Promise<void> {
     return { chapter };
   });
 
-  app.delete('/api/knowledge/points/chapters', async (request) => {
+  app.delete('/api/knowledge/points/chapters', { preHandler: requireAdmin }, async (request) => {
     const input = parseOrThrow(deleteSchema, request.query);
     await repository.deleteChapter(
       { conceptId: input.conceptId, ageBandId: input.ageBandId, degreeId: input.degreeId, pointPosition: input.pointPosition },

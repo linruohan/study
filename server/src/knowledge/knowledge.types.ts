@@ -43,6 +43,9 @@ export interface VariantDto {
   note: string | null;
   /// 学习程度 id -> 该程度下的知识点，按顺序排列。
   points: Record<string, string[]>;
+  /// 学习程度 id -> 与 points 按位置一一对应的认知层级
+  /// （remember/understand/apply/analyze/evaluate/create）。
+  pointLevels?: Record<string, string[]>;
   /// 学习程度 id -> pointPosition(1-based) -> 章节列表（可选扩展）。
   chapters?: Record<string, Record<string, ChapterDto[]>>;
 }

@@ -1,7 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { requireAdmin } from '../auth/auth.hooks.js';
 import { HttpError } from '../http/errors.js';
 import * as repository from './point_feedback.repository.js';
+
+/// 审核通过后的积分额度由服务端定值，不再信任客户端传参。
+const CORRECTION_REWARD_POINTS = 5;
 
 const pointRefSchema = z.object({
   conceptId: z.string().trim().min(1),
@@ -83,13 +87,13 @@ export async function pointFeedbackRoutes(app: FastifyInstance): Promise<void> {
     return { corrections };
   });
 
-  app.post('/api/knowledge/points/corrections/review', async (request) => {
+  app.post('/api/knowledge/points/corrections/review', { preHandler: requireAdmin }, async (request) => {
     const input = parseOrThrow(reviewSchema, request.body);
     const correction = await repository.reviewCorrection(
       input.correctionId,
       input.reviewerDeviceId,
       input.approve,
-      input.approve ? (input.points ?? 0) : 0,
+      input.approve ? CORRECTION_REWARD_POINTS : 0,
     );
     return { correction };
   });

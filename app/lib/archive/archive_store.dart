@@ -35,6 +35,31 @@ class ArchiveStore {
     return copy;
   }
 
+  /// 列出文档目录里已有的导出副本，按修改时间从新到旧。
+  Future<List<File>> listExportedCopies() async {
+    final directory = _directory ?? await getApplicationDocumentsDirectory();
+    final files = <File>[];
+    await for (final entity in directory.list()) {
+      if (entity is File &&
+          entity.path.contains('study_archive_') &&
+          entity.path.endsWith('.json')) {
+        files.add(entity);
+      }
+    }
+    files.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+    return files;
+  }
+
+  /// 从导出副本导入整份档案：先校验格式与版本，再整份替换并同步数据库。
+  ///
+  /// 导入会覆盖当前档案，调用方须先向用户确认。
+  Future<ArchiveFile> importCopy(File file) async {
+    final raw = await file.readAsString();
+    final archive = ArchiveFile.parse(raw); // 格式或版本不对会抛 FormatException。
+    await _repository.saveArchive(archive);
+    return _repository.archive;
+  }
+
   /// 追加一条练习记录。
   Future<ArchiveFile> addPractice({
     required String subject,

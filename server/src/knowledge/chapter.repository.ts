@@ -46,9 +46,6 @@ export async function listChapters(ref: ChapterRef): Promise<ChapterDto[]> {
     );
     return result.rows.map((row) => ({ chapterPosition: row.chapter_position, title: row.title, content: row.content }));
   } catch (error) {
-    if ((error as { code?: string }).code === '42P01') {
-      return [];
-    }
     throw toPgError(error);
   }
 }

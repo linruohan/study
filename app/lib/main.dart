@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app_brand.dart';
+import 'data/auth_session.dart';
 import 'data/study_repository.dart';
 import 'ui/bootstrap_page.dart';
 import 'ui/theme.dart';
 
 void main() {
+  // 恢复上一次的登录态（token + 用户信息），供接口带 Bearer 与角色判断使用。
+  AuthSession.instance.restore();
   runApp(const StudyApp());
 }
 

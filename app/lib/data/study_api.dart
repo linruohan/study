@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'auth_session.dart';
+
 /// 接口错误：带上可读信息，启动页直接展示。
 class StudyApiException implements Exception {
   StudyApiException(this.message);
@@ -82,12 +84,13 @@ abstract class StudyApi {
     String? glyph,
   });
 
-  /// 在某条知识的某个学习程度下追加一个知识点。
+  /// 在某条知识的某个学习程度下追加一个知识点；可标注认知层级。
   Future<Map<String, dynamic>> addKnowledgePoint({
     required String conceptId,
     required String ageBandId,
     required String degreeId,
     required String point,
+    String? cognitiveLevel,
   });
 
   /// 审核知识点纠错（通过可发放积分）。
@@ -250,12 +253,14 @@ class HttpStudyApi implements StudyApi {
     required String ageBandId,
     required String degreeId,
     required String point,
+    String? cognitiveLevel,
   }) async {
     final map = await _request('POST', '/api/knowledge/points', body: {
       'conceptId': conceptId,
       'ageBandId': ageBandId,
       'degreeId': degreeId,
       'point': point,
+      if (cognitiveLevel != null) 'cognitiveLevel': cognitiveLevel,
     });
     final created = map['point'];
     return created is Map ? Map<String, dynamic>.from(created) : map;
@@ -481,6 +486,11 @@ class HttpStudyApi implements StudyApi {
     try {
       final request = await _client.openUrl(method, uri).timeout(_timeout);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      // 已登录时带上会话 token；服务端据此判断管理员权限。
+      final token = AuthSession.token;
+      if (token != null && token.isNotEmpty) {
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+      }
       if (body != null) {
         request.headers.contentType = ContentType.json;
         request.write(jsonEncode(body));

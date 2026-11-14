@@ -71,6 +71,7 @@ interface PointRow {
   age_band_id: string;
   degree_id: string;
   point: string;
+  cognitive_level: string;
 }
 
 /// 读取完整知识库，按「年龄段 → 程度 → 分类（父类/子类）→ 概念 → 呈现 → 知识点」组装。
@@ -108,7 +109,7 @@ export async function loadKnowledgeBundle(): Promise<KnowledgeBundle> {
         ORDER BY b.sort_order`,
     ),
     pool.query<PointRow>(
-      `SELECT concept_id, age_band_id, degree_id, point
+      `SELECT concept_id, age_band_id, degree_id, position, point, cognitive_level
          FROM knowledge_variant_points
         ORDER BY degree_id, position`,
     ),
@@ -198,6 +199,9 @@ export async function loadKnowledgeBundle(): Promise<KnowledgeBundle> {
       continue;
     }
     (variant.points[row.degree_id] ??= []).push(row.point);
+    // 认知层级与知识点按位置一一对应，客户端据此显示层级标签。
+    (variant.pointLevels ??= {})[row.degree_id] ??= [];
+    variant.pointLevels[row.degree_id].push(row.cognitive_level ?? 'remember');
   }
 
   const chapters = await loadAllChapters();
@@ -275,7 +279,8 @@ export async function createConcept(
       [concept.id, input.ageBandId, input.topic, input.glyph ?? null, doing, praise, check, answer, note, input.categoryId],
     );
 
-    // 三档默认知识点与种子数据规则一致；之后可在详情页继续追加。
+    // 默认知识点与种子数据规则一致（覆盖入门/熟练/精通三档）；创造档与追加项
+    // 之后再在详情页添加。之后可在详情页继续追加。
     await client.query(
       `INSERT INTO knowledge_variant_points
          (concept_id, age_band_id, degree_id, position, point)
@@ -308,6 +313,8 @@ export interface CreatePointInput {
   ageBandId: string;
   degreeId: string;
   point: string;
+  /// 认知层级；缺省「记忆」。
+  cognitiveLevel?: string;
 }
 
 /// 在某条知识、某个年龄档、某个学习程度下追加一个知识点。
@@ -315,7 +322,8 @@ export interface CreatePointInput {
 /// 位置接在该程度现有知识点末尾，章节随后可以挂到这个位置上。
 export async function addKnowledgePoint(
   input: CreatePointInput,
-): Promise<{ position: number; point: string }> {
+): Promise<{ position: number; point: string; cognitiveLevel: string }> {
+  const cognitiveLevel = input.cognitiveLevel ?? 'remember';
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -336,12 +344,12 @@ export async function addKnowledgePoint(
     const position = next.rows[0]?.position ?? 1;
     await client.query(
       `INSERT INTO knowledge_variant_points
-         (concept_id, age_band_id, degree_id, position, point)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [input.conceptId, input.ageBandId, input.degreeId, position, input.point],
+         (concept_id, age_band_id, degree_id, position, point, cognitive_level)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [input.conceptId, input.ageBandId, input.degreeId, position, input.point, cognitiveLevel],
     );
     await client.query('COMMIT');
-    return { position, point: input.point };
+    return { position, point: input.point, cognitiveLevel };
   } catch (error) {
     await client.query('ROLLBACK');
     const code = (error as { code?: string }).code;

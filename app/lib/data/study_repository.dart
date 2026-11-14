@@ -232,17 +232,19 @@ class StudyRepository {
     glyph: glyph,
   );
 
-  /// 在某个学习程度下追加知识点。
+  /// 在某个学习程度下追加知识点；可标注认知层级。
   Future<Map<String, dynamic>> addKnowledgePoint({
     required String conceptId,
     required String ageBandId,
     required String degreeId,
     required String point,
+    String? cognitiveLevel,
   }) => _api.addKnowledgePoint(
     conceptId: conceptId,
     ageBandId: ageBandId,
     degreeId: degreeId,
     point: point,
+    cognitiveLevel: cognitiveLevel,
   );
 
   Future<Map<String, dynamic>> reviewPointCorrection({
@@ -291,6 +293,18 @@ class StudyRepository {
   }) => _api.deletePointChapter(conceptId: conceptId, ageBandId: ageBandId, degreeId: degreeId, pointPosition: pointPosition, chapterPosition: chapterPosition);
 
   Future<Map<String, dynamic>> fetchPointCredits({int? limit, int? offset}) => _api.fetchPointCredits(deviceId, limit: limit, offset: offset);
+
+  /// 清除本机缓存文件；业务数据在服务端，联网后会重新拉取。
+  ///
+  /// 有未同步的离线修改时不清，避免丢数据。
+  Future<bool> clearLocalCache() async {
+    final cached = await _cache.read();
+    if (cached?.pending == true) {
+      return false;
+    }
+    await _cache.clear();
+    return true;
+  }
 
   Future<List<Map<String, dynamic>>> fetchPendingPointCorrections({int? limit, int? offset}) => _api.fetchPendingPointCorrections(limit: limit, offset: offset);
 

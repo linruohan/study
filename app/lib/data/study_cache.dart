@@ -32,6 +32,9 @@ abstract class StudyCache {
     required Map<String, Object?> userData,
     required bool pending,
   });
+
+  /// 清除本机缓存文件；业务数据在服务端，删掉后联网会重新拉取。
+  Future<void> clear();
 }
 
 /// 本机文件缓存：只存最近一次拉取的知识和用户数据，断网时兜底。
@@ -94,5 +97,13 @@ class FileStudyCache implements StudyCache {
       await file.delete();
     }
     await temp.rename(file.path);
+  }
+
+  @override
+  Future<void> clear() async {
+    final file = await _file();
+    if (await file.exists()) {
+      await file.delete();
+    }
   }
 }

@@ -2,15 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../app_brand.dart';
 import '../archive/archive_store.dart';
+import '../archive/learning_record.dart';
+import '../data/auth_session.dart';
 import '../data/study_repository.dart';
 import '../guardian/guardian_page.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
-import '../knowledge/knowledge_catalog.dart';
 import '../knowledge/knowledge_graph.dart';
 import '../knowledge/taxonomy.dart';
 import '../learning/learner_state.dart';
 import '../messages/app_message.dart';
+import '../messages/message_read_store.dart';
 import '../plan/plan_book.dart';
 import '../plan/plan_store.dart';
 import '../plan/study_plan.dart';
@@ -83,8 +85,12 @@ class _HomePageState extends State<HomePage> {
 
   String? _exportPath;
 
-  /// 已读消息 id；目前只留在内存里，重启后再提示一次。
-  final Set<String> _readMessageIds = <String>{};
+  /// 最近一次加载的档案记录，供「我的」页展示最近学习与成就。
+  List<LearningRecord> _records = const <LearningRecord>[];
+
+  /// 已读消息 id；持久化到本机文件，重启后不再重复提醒。
+  final MessageReadStore _readStore = FileMessageReadStore();
+  Set<String> _readMessageIds = <String>{};
 
   /// 本次启动时间，用来给系统通知一个稳定的时间。
   late final DateTime _sessionStartedAt = DateTime.now();
@@ -94,6 +100,11 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _book.addListener(_onPlansChanged);
     _book.load();
+    _readStore.load().then((ids) {
+      if (mounted) {
+        setState(() => _readMessageIds = ids);
+      }
+    });
     _reload();
   }
 
@@ -120,6 +131,7 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _learner = LearnerState.fromRecords(archive.records);
       _recordCount = archive.records.length;
+      _records = archive.records;
     });
   }
 
@@ -193,8 +205,20 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  /// 非管理员拦截知识内容编辑；返回 true 表示放行。
+  bool _requireAdminForEdit() {
+    if (AuthSession.isAdmin) {
+      return true;
+    }
+    showInfoToast(context, '普通用户只读，请先用管理员账号在「我的」页登录。');
+    return false;
+  }
+
   /// 知识库「+ 子类型」：在当前分类下再挂一层子类型，并展开父级、选中新节点。
   Future<void> _addSubtype(ScholarCategory parent) async {
+    if (!_requireAdminForEdit()) {
+      return;
+    }
     final createdId = await showDialog<String>(
       context: context,
       builder: (_) => AddSubtypeDialog(
@@ -232,6 +256,9 @@ class _HomePageState extends State<HomePage> {
 
   /// 知识库「铅笔」：修改当前分类的名称与描述，成功后重新拉取知识库。
   Future<void> _editCategory(ScholarCategory category) async {
+    if (!_requireAdminForEdit()) {
+      return;
+    }
     final parentId = category.parentId;
     final updated = await showDialog<bool>(
       context: context,
@@ -262,6 +289,9 @@ class _HomePageState extends State<HomePage> {
 
   /// 知识库「+ 知识」：弹窗提交后刷新目录，停留在当前分类。
   Future<void> _addKnowledge(ScholarCategory category) async {
+    if (!_requireAdminForEdit()) {
+      return;
+    }
     final band = _profile.band;
     if (band == null) {
       return;
@@ -477,6 +507,73 @@ class _HomePageState extends State<HomePage> {
     setState(() => _exportPath = file.path);
   }
 
+  /// 导入档案：先列出导出副本，确认后整份替换当前档案。
+  Future<void> _import() async {
+    final copies = await widget.archive.listExportedCopies();
+    if (!mounted) {
+      return;
+    }
+    if (copies.isEmpty) {
+      showInfoToast(context, '还没有导出副本，先用「导出档案到本地」导出一份。');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const Key('import_archive_dialog'),
+        title: const Text('导入档案'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('选择要导入的副本（导入会覆盖当前档案）：'),
+              const SizedBox(height: 10),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: copies.length,
+                  itemBuilder: (context, index) {
+                    final name = copies[index].uri.pathSegments.last;
+                    return ListTile(
+                      dense: true,
+                      title: Text(name, overflow: TextOverflow.ellipsis),
+                      onTap: () => Navigator.of(ctx).pop(true),
+                      trailing: index == 0 ? const Text('最新') : null,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    try {
+      final archive = await widget.archive.importCopy(copies.first);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _learner = LearnerState.fromRecords(archive.records);
+        _recordCount = archive.records.length;
+      });
+      showSuccessToast(context, '档案已导入：${archive.records.length} 条记录');
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      await showFailureDialog(context, title: '档案导入失败', reason: '$error');
+    }
+  }
+
   /// 进入计划对应的分类阶梯；简单了解只看前两层。
   Future<void> _openPlan(StudyPlan plan, ScholarCategory category) async {
     final band = _profile.band;
@@ -564,7 +661,7 @@ class _HomePageState extends State<HomePage> {
         categoryId: category.id,
         depth: PlanDepth.deep,
         conceptId: concept.id,
-        degree: KnowledgeCatalog.instance.degrees.first,
+        degree: widget.repository.catalog.degrees.first,
         startAt: now,
         remind: false,
       ),
@@ -613,9 +710,11 @@ class _HomePageState extends State<HomePage> {
           plans: _book.plans,
           recordCount: _recordCount,
           exportPath: _exportPath,
+          records: _records,
           onChangeBand: _changeBand,
           onGuardian: _guardian,
           onExport: _export,
+          onImport: _import,
           onSage: _sage,
         ),
       _ => PlanView(
@@ -682,6 +781,7 @@ class _HomePageState extends State<HomePage> {
             readIds: _readMessageIds,
             onMarkRead: (id) {
               setState(() => _readMessageIds.add(id));
+              _readStore.save(_readMessageIds);
             },
             onMarkAllRead: () {
               setState(() {
@@ -689,6 +789,7 @@ class _HomePageState extends State<HomePage> {
                   _buildMessages(band).map((message) => message.id),
                 );
               });
+              _readStore.save(_readMessageIds);
             },
             onAction: _handleMessageAction,
           ),

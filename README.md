@@ -16,7 +16,7 @@
 - **形成三观**：在完整、健康、科学的路径上逐步建立人生观、价值观、世界观，找到人生的终极目标——从哪里来，到哪里去。
 - **人生导师**：提供科学规划，是一个人的人生旅程导师，帮助实现人生价值。
 
-学习材料按年龄目录分开存放（幼儿 → 小学 → 中学 → 大学 → 社会）。本人、监护人和学校把记录留在本机，应用据此给出下一步并说明依据；档案由用户自己导出保存，不上传。
+学习材料按年龄目录分开存放（幼儿 → 小学 → 中学 → 大学 → 社会）。学习记录与知识库保存在服务端（PostgreSQL），客户端本机只保留设备标识与最近一次成功数据的缓存，断网时用缓存启动、联网后自动同步；档案仍可导出本机副本。
 
 ## 平台支持
 
@@ -59,7 +59,9 @@ study/
 powershell -ExecutionPolicy Bypass -File .\scripts\start-dev.ps1
 ```
 
-脚本会依次检查并启动 WSL（Arch）中的 PostgreSQL、SeaweedFS、Node 依赖和 Fastify API，再安装 Flutter 依赖并打开 Windows 应用。只有 API 的 `/healthz` 确认数据库和对象存储都正常后才会打开应用；任一强依赖失败都会显示红色错误并终止，不会带病继续启动。
+脚本会依次启动 Docker 中的 PostgreSQL 16 与 MinIO（`server/docker-compose.yml`）、检查 Node 依赖并启动 Fastify API，再安装 Flutter 依赖并打开 Windows 应用。只有 API 的 `/healthz` 确认数据库和对象存储都正常后才会打开应用；任一强依赖失败都会显示红色错误并终止，不会带病继续启动。
+
+前置要求：已安装并启动 Docker Desktop、Node.js ≥ 20；Flutter 之外无需 WSL 或本地数据库。
 
 按需使用：
 
@@ -71,7 +73,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-dev.ps1 -ServerOnly
 powershell -ExecutionPolicy Bypass -File .\scripts\start-dev.ps1 -Migrate
 ```
 
-首次运行前需准备好 `server/.env`，并在 WSL 中安装 PostgreSQL 与 SeaweedFS 服务。API 运行日志位于 `server/.dev-server.log` 和 `server/.dev-server.error.log`。
+首次运行前需准备好 `server/.env`（`copy .env.example .env`，默认值与 `docker-compose.yml` 一致）。API 运行日志位于 `server/.dev-server.log` 和 `server/.dev-server.error.log`。
 
 ## 客户端 app/
 
@@ -85,7 +87,7 @@ Flutter 应用（`study_app`，中文名「文明重启」，英文名 Lumen）�
 | `lib/profile/` | 本机档案配置（年龄档等） |
 | `lib/plan/` | 学习计划：计划簿、计划文本、本地存储 |
 | `lib/learning/` | 技能四档（尝试 → 熟悉 → 熟练 → 掌握）、阶梯、复习、成就 |
-| `lib/knowledge/` | 知识图谱与领域目录（语、数、生活），按年龄档组织 |
+| `lib/knowledge/` | 知识图谱与分类树（父类/子类，全部来自服务端），按年龄档组织 |
 | `lib/guardian/` | 监护人：照护观察记录与依据提醒（明确不是教师/心理咨询师/医生的判断） |
 | `lib/ui/` | 页面与纸本风格主题：今日、路径、按兴趣看看、字库、复习等 |
 
@@ -116,6 +118,7 @@ cd app && flutter test
 纸本学习应用的素材服务：PostgreSQL 存元数据与纯文本，MinIO 存图片/音频/视频本体，库里只存 `object_key`，内容通过预签名地址获取。
 
 - 运行时：Node.js ≥ 20，TypeScript + Fastify 5 + zod 校验
+- **权限**：普通用户只读；知识内容写接口（分类/知识/知识点/章节）与纠错审核仅管理员可用，未登录 401、普通用户 403。内置管理员 `admin/admin`，首次登录强制修改密码。评论、纠错提交与设备学习数据不要求登录。
 - 配置集中在 `src/config.ts`，环境变量缺项直接报错，不带病启动
 - 统一错误出口：`404`、`400` 参数错误、`413` 超限，响应形如 `{ error: { code, message } }`
 
@@ -123,13 +126,39 @@ cd app && flutter test
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/healthz` | 健康检查 |
+| GET | `/healthz` | 健康检查（数据库 + 对象存储） |
+| POST | `/api/auth/login` | 登录，返回会话 token 与用户信息（内置管理员 admin/admin，首登强制改密） |
+| POST | `/api/auth/logout` | 退出登录（需 Bearer token） |
+| GET | `/api/auth/me` | 当前登录用户 |
+| POST | `/api/auth/password` | 修改自己的密码 |
+| GET | `/api/users` | 用户列表（仅管理员） |
+| PATCH | `/api/users/:id/role` | 调整用户角色 user/admin（仅管理员） |
+| POST | `/api/users/:id/reset-password` | 重置他人密码为临时密码（仅管理员） |
+| GET | `/api/degree` | 当前用户境界（九境三阶） |
+| POST | `/api/degree/applications` | 提交学位申请（同用户同时只允许一条待审） |
+| GET | `/api/degree/applications/mine` | 我的申请记录 |
+| GET | `/api/degree/applications` | 申请列表（仅管理员，`status=pending` 等） |
+| POST | `/api/degree/applications/:id/review` | 审核学位申请，通过即提升境界（仅管理员） |
 | POST | `/api/assets/text` | 新建纯文本素材（正文直接入库） |
 | POST | `/api/assets` | 上传图片/音频/视频（multipart） |
 | GET | `/api/assets` | 列表，支持 `kind`、`limit`、`offset` |
 | GET | `/api/assets/:id` | 素材详情 |
 | GET | `/api/assets/:id/content` | 取内容（文本回正文，二进制返回预签名地址） |
 | DELETE | `/api/assets/:id` | 删除素材 |
+| GET | `/api/knowledge` | 知识库整包：分类树（父类/子类）、概念、分龄呈现、知识点、章节、sageCredits |
+| POST | `/api/knowledge/categories` | 新建分类/子类（`parentId` 可嵌套；未迁移时 503 `migration_required`） |
+| PATCH | `/api/knowledge/categories/:id` | 分类改名 |
+| POST | `/api/knowledge/concepts` | 新建知识（事务：概念 + 分龄呈现 + 三档知识点） |
+| POST | `/api/knowledge/points` | 追加知识点 |
+| GET/POST/PUT/DELETE | `/api/knowledge/points/chapters` | 知识点章节 CRUD（按概念+年龄段+程度+位置定位） |
+| GET/POST | `/api/knowledge/points/comments` | 知识点评论 |
+| GET/POST | `/api/knowledge/points/corrections` | 纠错提交与列表 |
+| GET | `/api/knowledge/points/corrections/pending` | 待审核纠错列表 |
+| POST | `/api/knowledge/points/corrections/review` | 审核纠错（通过发积分） |
+| GET | `/api/knowledge/points/credits` | 积分余额与流水 |
+| GET/PUT | `/api/devices/:deviceId/sage` | 智者名读取/保存 |
+| POST | `/api/devices/:deviceId/sage/contributions` | 智者贡献（提交即审批） |
+| GET/PUT | `/api/devices/:deviceId/data` | 设备数据整包读写（事务内替换 + 知识引用校验） |
 
 ### 运行
 
@@ -179,8 +208,9 @@ npm start            # 运行 dist/index.js
 
 ## 设计要点
 
-- **档案在本机**：不上传；指导只依据本机已有记录，写明依据，允许改掉、拒绝或删除。
-- **技能四档**：尝试 → 熟悉 → 熟练 → 掌握，同一技能在不同题目里稳定使用才升级；不进排行。
+- **学习数据在服务端、缓存在本机**：记录与知识库存 PostgreSQL，客户端只留设备标识与缓存，断网可用、联网自动同步；档案可导出本机副本，不上传给第三方。
+- **两级角色**：普通用户登录后只读；管理员可修改添加一切知识内容并审核纠错。详见 [doc/开发指导文档.md](doc/开发指导文档.md) 的「管理体系」。
+- **技能四档**：尝试 → 熟悉 → 熟练 → 掌握（规划中的认知四档「入门/熟练/精通/创造」见 [doc/开发指导文档.md](doc/开发指导文档.md)），同一技能在不同题目里稳定使用才升级；不进排行。
 - **两句才记成长**：「我更能做成事了」与「我更知道自己是谁了」同时发生才记成成长。
 - **一个年龄一套学法**：3–5 岁用触摸和语音，6 岁起文字菜单分科学习，12 岁起学概念与出处。
 - **没有连胜、排行榜、课内购买和广告**；答错说明错在哪，并给一次改的机会。

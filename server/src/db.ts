@@ -8,6 +8,12 @@ export const pool = new Pool({
   idleTimeoutMillis: 30_000,
 });
 
+/// 空闲连接被数据库单方面断开（例如服务重启）时不要让整个进程崩掉，
+/// 连接池会在下次请求时自动重新建连。
+pool.on('error', (error) => {
+  console.error('数据库空闲连接异常，连接池将自动重连：', error.message);
+});
+
 /// 探活：能执行 select 1 就说明数据库连得上。
 export async function pingDatabase(): Promise<void> {
   await pool.query('SELECT 1');

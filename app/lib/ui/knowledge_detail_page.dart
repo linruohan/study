@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../archive/archive_store.dart';
+import '../data/auth_session.dart';
 import '../data/study_repository.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
@@ -59,7 +60,7 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
   ConceptVariant get _variant => _concept.variantFor(widget.band);
 
   late final TabController _tabs = TabController(
-    length: KnowledgeCatalog.instance.degrees.length,
+    length: widget.repository.catalog.degrees.length,
     vsync: this,
   )..addListener(() {
       if (mounted) {
@@ -67,7 +68,7 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
       }
     });
 
-  StudyDegree get _degree => KnowledgeCatalog.instance.degrees[_tabs.index];
+  StudyDegree get _degree => widget.repository.catalog.degrees[_tabs.index];
 
   Set<StudyDegree> get _plannedDegrees {
     return {
@@ -106,44 +107,73 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     BuildContext context,
     StudyDegree degree,
   ) async {
+    if (!_requireAdminForEdit(context)) {
+      return;
+    }
     final controller = TextEditingController();
+    var level = 'remember';
     final created = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        key: const Key('add_point_dialog'),
-        title: Text('添加知识点 · ${degree.label}'),
-        content: SizedBox(
-          width: 420,
-          child: TextField(
-            key: const Key('add_point_text'),
-            controller: controller,
-            autofocus: true,
-            maxLength: 500,
-            maxLines: 2,
-            decoration: const InputDecoration(
-              labelText: '知识点内容',
-              hintText: '这个程度下要多学的一句',
-              border: OutlineInputBorder(),
-              isDense: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          key: const Key('add_point_dialog'),
+          title: Text('添加知识点 · ${degree.label}'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  key: const Key('add_point_text'),
+                  controller: controller,
+                  autofocus: true,
+                  maxLength: 500,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: '知识点内容',
+                    hintText: '这个程度下要多学的一句',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: level,
+                  decoration: const InputDecoration(
+                    labelText: '认知层级',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  items: [
+                    for (final entry in kCognitiveLevelLabels.entries)
+                      DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => level = value);
+                    }
+                  },
+                ),
+              ],
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              key: const Key('add_point_submit'),
+              onPressed: () {
+                if (controller.text.trim().isEmpty) {
+                  return;
+                }
+                Navigator.of(ctx).pop(true);
+              },
+              child: const Text('添加'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            key: const Key('add_point_submit'),
-            onPressed: () {
-              if (controller.text.trim().isEmpty) {
-                return;
-              }
-              Navigator.of(ctx).pop(true);
-            },
-            child: const Text('添加'),
-          ),
-        ],
       ),
     );
     final point = controller.text.trim();
@@ -157,6 +187,7 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
         ageBandId: widget.band.id,
         degreeId: degree.id,
         point: point,
+        cognitiveLevel: level,
       );
       // 重新从数据库读取，页面显示接口返回的最新知识点。
       await _refreshConcept();
@@ -176,7 +207,19 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     }
   }
 
+  /// 非管理员拦截编辑与审核操作；返回 true 表示放行。
+  bool _requireAdminForEdit(BuildContext context) {
+    if (AuthSession.isAdmin) {
+      return true;
+    }
+    showInfoToast(context, '普通用户只读，请先用管理员账号在「我的」页登录。');
+    return false;
+  }
+
   Future<void> _addChapter(BuildContext context, StudyDegree degree, int position) async {
+    if (!_requireAdminForEdit(context)) {
+      return;
+    }
     final titleController = TextEditingController();
     final contentController = TextEditingController();
     final created = await showDialog<bool>(
@@ -280,7 +323,7 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
           unselectedLabelColor: paperInkSoft,
           indicatorColor: paperOchre,
           tabs: [
-            for (final degree in KnowledgeCatalog.instance.degrees)
+            for (final degree in widget.repository.catalog.degrees)
               Tab(text: degree.label),
           ],
         ),
@@ -289,7 +332,7 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
         child: TabBarView(
           controller: _tabs,
           children: [
-            for (final degree in KnowledgeCatalog.instance.degrees)
+            for (final degree in widget.repository.catalog.degrees)
               _degreeTab(context, degree, variant),
           ],
         ),
@@ -394,7 +437,8 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
         if (points.isEmpty)
           Text('这个程度还没有知识点，点右上角添加一条吧。', style: text.bodySmall),
         for (var i = 0; i < points.length; i++) ...[
-          _pointCard(context, degree, points[i], i + 1),
+          _pointCard(context, degree, points[i], i + 1,
+              level: variant.levelsFor(degree)[i]),
           const SizedBox(height: 10),
         ],
         const SizedBox(height: 8),
@@ -411,8 +455,9 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     BuildContext context,
     StudyDegree degree,
     String point,
-    int position,
-  ) {
+    int position, {
+    String? level,
+  }) {
     final text = Theme.of(context).textTheme;
     final chapters = _variant.chaptersFor(degree, position);
     return PaperCard(
@@ -427,6 +472,13 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
               const Icon(Icons.check_circle_outline, size: 20, color: paperOchre),
               const SizedBox(width: 10),
               Expanded(child: Text(point, style: text.bodyMedium)),
+              if (level != null) ...[
+                const SizedBox(width: 8),
+                MasteryPill(
+                  label: cognitiveLevelLabel(level),
+                  color: paperStone,
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 10),
@@ -517,6 +569,9 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
   }
 
   Future<void> _editChapter(BuildContext context, StudyDegree degree, int pointPosition, KnowledgeChapter chapter, int chapterPosition) async {
+    if (!_requireAdminForEdit(context)) {
+      return;
+    }
     final titleController = TextEditingController(text: chapter.title);
     final contentController = TextEditingController(text: chapter.content ?? '');
     final ok = await showDialog<bool>(
@@ -574,6 +629,9 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
   }
 
   Future<void> _deleteChapter(BuildContext context, StudyDegree degree, int pointPosition, int chapterPosition) async {
+    if (!_requireAdminForEdit(context)) {
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -887,6 +945,10 @@ class _PointCorrectionsSheetState extends State<_PointCorrectionsSheet> {
 
   Future<void> _review(String correctionId, bool approve) async {
     if (_reviewingId.isNotEmpty) return;
+    if (!AuthSession.isAdmin) {
+      showInfoToast(context, '普通用户只读，请先用管理员账号在「我的」页登录。');
+      return;
+    }
     setState(() => _reviewingId = correctionId);
     try {
       final points = int.tryParse(_pointsController.text.trim()) ?? 0;

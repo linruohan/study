@@ -1,6 +1,19 @@
 import 'age_band.dart';
 import 'study_degree.dart';
 
+/// 认知思维目标层次（由低到高）：记忆→理解→应用→分析→评价→创新。
+const Map<String, String> kCognitiveLevelLabels = {
+  'remember': '记忆',
+  'understand': '理解',
+  'apply': '应用',
+  'analyze': '分析',
+  'evaluate': '评价',
+  'create': '创新',
+};
+
+String cognitiveLevelLabel(String level) =>
+    kCognitiveLevelLabels[level] ?? level;
+
 /// 同一概念在某一档年龄的呈现。
 ///
 /// 这是「认知分级映射表」的一行：概念本身只建一个节点，
@@ -33,6 +46,7 @@ class ConceptVariant {
     this.glyph,
     this.note,
     this.points = const {},
+    this.pointLevels = const {},
     this.chapters = const {},
   });
 
@@ -60,18 +74,34 @@ class ConceptVariant {
   /// 按学习程度 id 保存的知识点，来自数据库。
   final Map<String, List<String>> points;
 
+  /// 与 [points] 按位置一一对应的认知层级；缺档或短位时用「记忆」补齐。
+  final Map<String, List<String>> pointLevels;
+
   /// 学习程度 id -> pointPosition(1-based字符串) -> 章节列表。
   final Map<String, Map<String, List<KnowledgeChapter>>> chapters;
 
   /// 从知识库接口读取一档呈现。
   factory ConceptVariant.fromJson(Map<String, Object?> json) {
     final points = <String, List<String>>{};
+    final levels = <String, List<String>>{};
     final rawPoints = json['points'];
     if (rawPoints is Map) {
       for (final entry in rawPoints.entries) {
         final value = entry.value;
         if (value is List) {
           points[entry.key.toString()] = [
+            for (final item in value)
+              if (item is String) item,
+          ];
+        }
+      }
+    }
+    final rawLevels = json['pointLevels'];
+    if (rawLevels is Map) {
+      for (final entry in rawLevels.entries) {
+        final value = entry.value;
+        if (value is List) {
+          levels[entry.key.toString()] = [
             for (final item in value)
               if (item is String) item,
           ];
@@ -108,6 +138,7 @@ class ConceptVariant {
       glyph: json['glyph'] as String?,
       note: json['note'] as String?,
       points: points,
+      pointLevels: levels,
       chapters: chapters,
     );
   }
@@ -135,6 +166,29 @@ class ConceptVariant {
         ],
       _ => const [],
     };
+  }
+
+  /// 与 [pointsFor] 结果按位置一一对应的认知层级。
+  ///
+  /// 数据库没给全时按程度档位给出默认层级：入门=记忆/理解，
+  /// 熟练=应用/分析，精通=评价/创新，其余补「记忆」。
+  List<String> levelsFor(StudyDegree degree) {
+    final list = pointsFor(degree);
+    final explicit = pointLevels[degree.id];
+    return [
+      for (var i = 0; i < list.length; i++)
+        if (explicit != null && i < explicit.length)
+          explicit[i]
+        else if (explicit == null && points[degree.id] == null)
+          switch (degree.id) {
+            'beginner' => i == 0 ? 'remember' : 'understand',
+            'familiar' => i == 0 ? 'apply' : 'analyze',
+            'advanced' => i == 0 ? 'evaluate' : 'create',
+            _ => 'remember',
+          }
+        else
+          'remember',
+    ];
   }
 }
 

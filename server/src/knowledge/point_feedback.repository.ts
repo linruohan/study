@@ -78,9 +78,6 @@ export async function listComments(ref: PointRef, limit = 50, offset = 0): Promi
     );
     return result.rows.map(toCommentDto);
   } catch (error) {
-    if ((error as { code?: string }).code === '42P01') {
-      return [];
-    }
     throw toPgError(error);
   }
 }
@@ -124,9 +121,6 @@ export async function listCorrections(ref: PointRef, limit = 50, offset = 0): Pr
     );
     return result.rows.map(toCorrectionDto);
   } catch (error) {
-    if ((error as { code?: string }).code === '42P01') {
-      return [];
-    }
     throw toPgError(error);
   }
 }
@@ -203,6 +197,15 @@ export async function reviewCorrection(
         `INSERT INTO knowledge_point_credits (device_id, correction_id, amount, reason)
          VALUES ($1, $2, $3, $4)`,
         [row.device_id, correctionId, pointsAwarded, '知识点纠错审核通过奖励'],
+      );
+    }
+    // 纠错闭环：通过且带修正文本时，把修正写回知识点正文。
+    if (approve && row.suggested_text !== null && row.suggested_text.trim().length > 0) {
+      await client.query(
+        `UPDATE knowledge_variant_points
+            SET point = $1
+          WHERE concept_id = $2 AND age_band_id = $3 AND degree_id = $4 AND position = $5`,
+        [row.suggested_text.trim(), row.concept_id, row.age_band_id, row.degree_id, row.point_position],
       );
     }
     await client.query('COMMIT');
@@ -283,9 +286,6 @@ export async function listCredits(deviceId: string, limit = 50, offset = 0): Pro
     const balance = typeof raw === 'string' ? parseInt(raw, 10) || 0 : Number(raw) || 0;
     return { balance, items };
   } catch (error) {
-    if ((error as { code?: string }).code === '42P01') {
-      return { balance: 0, items: [] };
-    }
     throw toPgError(error);
   }
 }
@@ -306,9 +306,6 @@ export async function listPendingCorrections(limit = 50, offset = 0): Promise<Co
     );
     return result.rows.map(toCorrectionDto);
   } catch (error) {
-    if ((error as { code?: string }).code === '42P01') {
-      return [];
-    }
     throw toPgError(error);
   }
 }

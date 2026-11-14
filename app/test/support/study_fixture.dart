@@ -211,9 +211,10 @@ class FakeStudyApi implements StudyApi {
     required String ageBandId,
     required String degreeId,
     required String point,
+    String? cognitiveLevel,
   }) async {
     _ensureOnline();
-    return {'position': 1, 'point': point};
+    return {'position': 1, 'point': point, 'cognitiveLevel': cognitiveLevel ?? 'remember'};
   }
 
   @override
@@ -325,6 +326,12 @@ class MemoryStudyCache implements StudyCache {
       userData: userData,
       pending: pending,
     );
+  }
+
+  @override
+  Future<void> clear() async {
+    _current = null;
+    initial = null;
   }
 }
 

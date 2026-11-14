@@ -2,7 +2,10 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { assetRoutes } from './assets/asset.routes.js';
+import { authRoutes } from './auth/auth.routes.js';
+import { ensureAdminUser } from './auth/auth.repository.js';
 import { config } from './config.js';
+import { degreeRoutes } from './degree/degree.routes.js';
 import { healthRoutes } from './health.routes.js';
 import { HttpError } from './http/errors.js';
 import { chapterRoutes } from './knowledge/chapter.routes.js';
@@ -78,11 +81,16 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await app.register(healthRoutes);
   await app.register(assetRoutes);
+  await app.register(authRoutes);
+  await app.register(degreeRoutes);
   await app.register(knowledgeRoutes);
   await app.register(sageRoutes);
   await app.register(pointFeedbackRoutes);
   await app.register(chapterRoutes);
   await app.register(meRoutes);
+
+  // 内置管理员（admin/admin，首登强制改密）；库还没迁移时会报错，由启动日志暴露。
+  await ensureAdminUser();
 
   return app;
 }

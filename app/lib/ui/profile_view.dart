@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
 
+import '../archive/learning_record.dart';
+import '../data/auth_api.dart';
+import '../data/auth_session.dart';
 import '../data/study_repository.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/knowledge_graph.dart';
 import '../learning/achievements.dart';
 import '../learning/learner_state.dart';
 import '../plan/study_plan.dart';
+import 'profile_subpages.dart';
 import 'theme.dart';
 import 'widgets/glyph_badge.dart';
 import 'widgets/page_header.dart';
 import 'widgets/section_header.dart';
 import 'widgets/setting_row.dart';
 
-/// 我的入口：等级、徽章、积分与设置。
+/// 我的入口：基础信息、我的知识宫格、等级徽章与设置。
+///
+/// 结构按开发指导文档「我的」页面 UI 规格：
+/// 上（基础信息卡，可点进详情）→ 中（我的知识宫格）→ 下（设置）。
 class ProfileView extends StatefulWidget {
   const ProfileView({
     super.key,
@@ -21,11 +28,13 @@ class ProfileView extends StatefulWidget {
     required this.band,
     required this.learner,
     required this.plans,
+    required this.records,
     required this.recordCount,
     required this.exportPath,
     required this.onChangeBand,
     required this.onGuardian,
     required this.onExport,
+    required this.onImport,
     required this.onSage,
   });
 
@@ -34,11 +43,13 @@ class ProfileView extends StatefulWidget {
   final AgeBand band;
   final LearnerState learner;
   final List<StudyPlan> plans;
+  final List<LearningRecord> records;
   final int recordCount;
   final String? exportPath;
   final VoidCallback onChangeBand;
   final VoidCallback onGuardian;
   final VoidCallback onExport;
+  final VoidCallback onImport;
   final VoidCallback onSage;
 
   @override
@@ -133,8 +144,10 @@ class _ProfileViewState extends State<ProfileView> {
         const SizedBox(height: 16),
         _identityCard(context, earned, achievements.length),
         const SizedBox(height: 16),
-        _creditsCard(context),
-        const SizedBox(height: 22),
+        const SectionHeader(title: '我的知识'),
+        const SizedBox(height: 8),
+        _knowledgeGrid(context, achievements),
+        const SizedBox(height: 20),
         const SectionHeader(title: '等级'),
         const SizedBox(height: 6),
         Text(
@@ -180,47 +193,10 @@ class _ProfileViewState extends State<ProfileView> {
             );
           },
         ),
-        const SizedBox(height: 22),
-        const SectionHeader(title: '设置'),
-        const SizedBox(height: 12),
-        PaperCard(
-          padding: EdgeInsets.zero,
-          child: Column(
-            children: [
-              SettingRow(
-                key: const Key('profile_change_band'),
-                icon: Icons.swap_horiz,
-                title: '换年龄档',
-                subtitle: '当前：${widget.band.label}',
-                onTap: widget.onChangeBand,
-              ),
-              const Divider(),
-              SettingRow(
-                key: const Key('profile_sage'),
-                icon: Icons.auto_stories_outlined,
-                title: '智者 · 添加知识',
-                subtitle: '提交知识或知识点、创建子类型，审批后进入知识库。',
-                onTap: widget.onSage,
-              ),
-              const Divider(),
-              SettingRow(
-                key: const Key('profile_guardian'),
-                icon: Icons.visibility_outlined,
-                title: '监护人记一笔',
-                subtitle: '本机记录 ${widget.recordCount} 条',
-                onTap: widget.onGuardian,
-              ),
-              const Divider(),
-              SettingRow(
-                key: const Key('profile_export'),
-                icon: Icons.download_outlined,
-                title: '导出档案到本地',
-                subtitle: widget.exportPath ?? '把本机记录复制一份',
-                onTap: widget.onExport,
-              ),
-            ],
-          ),
-        ),
+        const SizedBox(height: 20),
+        _quickSection(context),
+        const SizedBox(height: 8),
+        _settingsEntry(context),
         if (widget.exportPath != null) ...[
           const SizedBox(height: 8),
           Text(widget.exportPath!, textAlign: TextAlign.center, style: text.bodySmall),
@@ -229,85 +205,329 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  Widget _creditsCard(BuildContext context) {
+  /// 上部基础信息卡：头像、用户名、境界，四项数据各进各的详情。
+  Widget _identityCard(BuildContext context, int earned, int total) {
     final text = Theme.of(context).textTheme;
+    final user = AuthSession.user;
+    final username = user?.username ?? '本机学习者';
+    final degree = AuthSession.instance.degree;
+    final today = todayRecords(widget.records, DateTime.now()).length;
     return PaperCard(
-      child: FutureBuilder<Map<String, dynamic>>(
-        future: _creditsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Row(children: [
-              const GlyphBadge(icon: Icons.stars_outlined, color: paperOchre, size: 44, fontSize: 22),
-              const SizedBox(width: 12),
-              Expanded(child: Text('正在加载积分…', style: text.bodyMedium)),
-            ]);
-          }
-          if (snapshot.hasError) {
-            return Row(children: [
-              const GlyphBadge(icon: Icons.stars_outlined, color: paperInkSoft, size: 44, fontSize: 22),
-              const SizedBox(width: 12),
-              Expanded(child: Text('积分加载失败，可稍后重试。', style: text.bodySmall)),
-              TextButton(onPressed: _reloadCredits, child: const Text('重试')),
-            ]);
-          }
-          final data = snapshot.data ?? const {};
-          final balance = (data['balance'] as num?)?.toInt() ?? 0;
-          final items = (data['items'] is List) ? (data['items'] as List) : const [];
-          final recent = items.take(3).toList();
-          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              const GlyphBadge(icon: Icons.stars, color: paperOchre, size: 44, fontSize: 22),
-              const SizedBox(width: 12),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('贡献积分', style: text.titleMedium),
-                Text('审核通过的知识点纠错等会获得积分', style: text.bodySmall),
-              ])),
-              Text('$balance', style: text.headlineSmall?.copyWith(color: paperOchre)),
-              IconButton(onPressed: _reloadCredits, icon: const Icon(Icons.refresh, size: 18)),
-              IconButton(onPressed: () => _showCreditsDetail(context), icon: const Icon(Icons.receipt_long_outlined, size: 18), tooltip: '查看明细'),
-            ]),
-            if (recent.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              for (final item in recent)
-                if (item is Map)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      '+${(item['amount'] as num?)?.toInt() ?? 0}  ${item['reason'] ?? ''}',
-                      style: text.bodySmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            key: const Key('profile_identity'),
+            onTap: () => _openDetail(context),
+            borderRadius: BorderRadius.circular(10),
+            child: Row(
+              children: [
+                const GlyphBadge(
+                    icon: Icons.account_circle_outlined,
+                    color: paperOchre,
+                    size: 56,
+                    fontSize: 28),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Flexible(
+                          child: Text(username,
+                              style: text.titleMedium, overflow: TextOverflow.ellipsis),
+                        ),
+                        const SizedBox(width: 8),
+                        MasteryPill(label: degree.realmLabel, color: paperOchre),
+                      ]),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${widget.band.label} · 记录 ${widget.recordCount} 条',
+                        style: text.bodySmall,
+                      ),
+                    ],
                   ),
-              Align(alignment: Alignment.centerLeft, child: TextButton(onPressed: () => _showCreditsDetail(context), child: const Text('查看全部明细'))),
-            ] else
-              Align(alignment: Alignment.centerLeft, child: TextButton(onPressed: () => _showCreditsDetail(context), child: const Text('查看明细'))),
-          ]);
-        },
+                ),
+                _studentCardChip(context),
+              ],
+            ),
+          ),
+          const Divider(height: 20, color: paperLine),
+          FutureBuilder<Map<String, dynamic>>(
+            future: _creditsFuture,
+            builder: (context, snapshot) {
+              final data = snapshot.data ?? const {};
+              final balance = (data['balance'] as num?)?.toInt() ?? 0;
+              return Row(
+                children: [
+                  _statTile(context, '学分', '$balance', onTap: () => _showCreditsDetail(context)),
+                  _statDivider(),
+                  _statTile(context, '今日学习', '$today 条',
+                      onTap: () => _push(context, RecentLearningPage(records: widget.records))),
+                  _statDivider(),
+                  _statTile(context, '勋章', '$earned',
+                      onTap: () => _showBadgesSheet(context, total)),
+                  _statDivider(),
+                  _statTile(context, '证书', '0',
+                      onTap: () => _push(
+                        context,
+                        const PlaceholderListPage(
+                          title: '证书',
+                          hint: '达到境界或完成分类后颁发，敬请期待。',
+                        ),
+                      )),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }
 
-  Widget _identityCard(BuildContext context, int earned, int total) {
-    final text = Theme.of(context).textTheme;
-    return PaperCard(
+  Widget _studentCardChip(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: paperOchre.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: paperOchre.withValues(alpha: 0.4)),
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          GlyphBadge(icon: Icons.account_circle_outlined, color: paperOchre, size: 58, fontSize: 28),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(widget.band.label, style: text.titleMedium),
-                const SizedBox(height: 4),
-                Text(widget.band.howToLearn, style: text.bodySmall),
-                const SizedBox(height: 6),
-                Text('记录 ${widget.recordCount} 条 · 徽章 $earned/$total', style: text.bodySmall),
-              ],
+          const Icon(Icons.school_outlined, size: 14, color: paperOchre),
+          const SizedBox(width: 4),
+          Text('学生证', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: paperOchre)),
+        ],
+      ),
+    );
+  }
+
+  Widget _statTile(
+    BuildContext context,
+    String label,
+    String value, {
+    VoidCallback? onTap,
+  }) {
+    final text = Theme.of(context).textTheme;
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(
+            children: [
+              Text(value, style: text.titleLarge?.copyWith(color: paperOchre)),
+              const SizedBox(height: 2),
+              Text(label, style: text.bodySmall),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _statDivider() => Container(width: 1, height: 32, color: paperLine);
+
+  Future<void> _openDetail(BuildContext context) async {
+    final data = await _creditsFuture;
+    final balance = (data['balance'] as num?)?.toInt() ?? 0;
+    if (!context.mounted) {
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProfileDetailPage(
+          records: widget.records,
+          creditBalance: balance,
+          plans: widget.plans,
+        ),
+      ),
+    );
+    _reloadCredits();
+  }
+
+  Future<void> _push(BuildContext context, Widget page) {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => page),
+    );
+  }
+
+  void _showBadgesSheet(BuildContext context, int total) {
+    final achievements = buildAchievements(
+      graph: widget.graph,
+      band: widget.band,
+      learner: widget.learner,
+      plans: widget.plans,
+    );
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('勋章墙 · ${achievements.where((a) => a.earned).length}/$total',
+                  style: Theme.of(ctx).textTheme.titleMedium),
+              const SizedBox(height: 10),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final achievement in achievements)
+                      ListTile(
+                        leading: Icon(
+                          achievement.earned ? Icons.workspace_premium : Icons.lock_outline,
+                          color: achievement.earned ? paperOchre : paperInkSoft,
+                        ),
+                        title: Text(achievement.title),
+                        subtitle: Text(
+                          achievement.earned ? '已达成' : achievement.condition,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 中部「我的知识」宫格：笔记、最近学习、下载、收藏/清单。
+  Widget _knowledgeGrid(BuildContext context, List<Achievement> achievements) {
+    return Row(
+      children: [
+        _gridTile(context, Icons.bookmark_border, '笔记', () {
+          _push(
+            context,
+            const PlaceholderListPage(
+              title: '笔记',
+              hint: '学习笔记整理中，先在练习里记录吧。',
             ),
+          );
+        }),
+        _gridTile(context, Icons.history, '最近学习', () {
+          _push(context, RecentLearningPage(records: widget.records));
+        }),
+        _gridTile(context, Icons.download_outlined, '下载', () {
+          _push(
+            context,
+            const PlaceholderListPage(
+              title: '下载',
+              hint: '离线内容下载即将支持。',
+            ),
+          );
+        }),
+        _gridTile(context, Icons.favorite_border, '收藏/清单', () {
+          _push(context, CollectionPage(plans: widget.plans));
+        }),
+      ],
+    );
+  }
+
+  Widget _gridTile(
+    BuildContext context,
+    IconData icon,
+    String label,
+    VoidCallback onTap,
+  ) {
+    final text = Theme.of(context).textTheme;
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Column(
+            children: [
+              Icon(icon, size: 26, color: paperInkSoft),
+              const SizedBox(height: 6),
+              Text(label, style: text.bodySmall),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 快捷区：保留常用入口在本页，完整设置在设置页。
+  Widget _quickSection(BuildContext context) {
+    return PaperCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          SettingRow(
+            key: const Key('profile_change_band'),
+            icon: Icons.swap_horiz,
+            title: '换年龄档',
+            subtitle: '当前：${widget.band.label}',
+            onTap: widget.onChangeBand,
+          ),
+          const Divider(),
+          SettingRow(
+            key: const Key('profile_sage'),
+            icon: Icons.auto_stories_outlined,
+            title: '智者 · 添加知识',
+            subtitle: '提交知识或知识点、创建子类型，审批后进入知识库。',
+            onTap: widget.onSage,
+          ),
+          const Divider(),
+          SettingRow(
+            key: const Key('profile_guardian'),
+            icon: Icons.visibility_outlined,
+            title: '监护人记一笔',
+            subtitle: '本机记录 ${widget.recordCount} 条',
+            onTap: widget.onGuardian,
+          ),
+          const Divider(),
+          SettingRow(
+            key: const Key('profile_export'),
+            icon: Icons.download_outlined,
+            title: '导出档案到本地',
+            subtitle: widget.exportPath ?? '把本机记录复制一份',
+            onTap: widget.onExport,
+          ),
+          const Divider(),
+          SettingRow(
+            key: const Key('profile_import'),
+            icon: Icons.upload_outlined,
+            title: '导入档案副本',
+            subtitle: '从导出的副本恢复（覆盖当前档案）',
+            onTap: widget.onImport,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _settingsEntry(BuildContext context) {
+    return PaperCard(
+      padding: EdgeInsets.zero,
+      child: SettingRow(
+        key: const Key('profile_settings'),
+        icon: Icons.settings_outlined,
+        title: '设置',
+        subtitle: '账号、隐私、主题、清除缓存、关于',
+        onTap: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => SettingsPage(repository: widget.repository),
+            ),
+          );
+          _reloadCredits();
+          if (mounted) {
+            setState(() {});
+          }
+        },
       ),
     );
   }
@@ -423,6 +643,195 @@ class _ProfileViewState extends State<ProfileView> {
           ],
         );
       },
+    );
+  }
+}
+
+/// 打开账号弹窗（登录 / 改密 / 退出 / 学位申请）；设置页与「我的」页共用。
+Future<void> showAccountDialog(BuildContext context) async {
+  await showDialog<void>(context: context, builder: (_) => const _AccountDialog());
+}
+
+/// 登录 / 账号管理弹窗：未登录时登录，已登录时改密、申请学位或退出。
+class _AccountDialog extends StatefulWidget {
+  const _AccountDialog();
+
+  @override
+  State<_AccountDialog> createState() => _AccountDialogState();
+}
+
+class _AccountDialogState extends State<_AccountDialog> {
+  final _username = TextEditingController();
+  final _password = TextEditingController();
+  final _oldPassword = TextEditingController();
+  final _newPassword = TextEditingController();
+  bool _busy = false;
+  String? _error;
+  String? _degreeLabel;
+  String? _applyRealm;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDegree();
+  }
+
+  Future<void> _loadDegree() async {
+    if (AuthSession.user == null) {
+      return;
+    }
+    try {
+      await AuthSession.instance.loadDegree();
+      if (mounted) {
+        setState(() => _degreeLabel = AuthSession.instance.degree.realmLabel);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _degreeLabel = null);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _username.dispose();
+    _password.dispose();
+    _oldPassword.dispose();
+    _newPassword.dispose();
+    super.dispose();
+  }
+
+  Future<void> _run(Future<void> Function() action) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await action();
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (error) {
+      setState(() {
+        _error = '$error';
+        _busy = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = AuthSession.user;
+    return AlertDialog(
+      key: const Key('account_dialog'),
+      title: Text(user == null ? '登录' : '账号 · ${user.username}'),
+      content: user == null
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  key: const Key('account_username'),
+                  controller: _username,
+                  decoration: const InputDecoration(labelText: '用户名'),
+                  autofocus: true,
+                ),
+                TextField(
+                  key: const Key('account_password'),
+                  controller: _password,
+                  decoration: const InputDecoration(labelText: '密码'),
+                  obscureText: true,
+                ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                  ),
+              ],
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(user.isAdmin ? '角色：管理员（可修改知识内容）' : '角色：普通用户（只读）'),
+                if (_degreeLabel != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('境界：$_degreeLabel'),
+                  ),
+                if (user.mustChangePassword)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text('正在使用默认密码，请尽快修改。', style: TextStyle(color: Colors.orange)),
+                  ),
+                const SizedBox(height: 12),
+                TextField(
+                  key: const Key('account_old_password'),
+                  controller: _oldPassword,
+                  decoration: const InputDecoration(labelText: '原密码'),
+                  obscureText: true,
+                ),
+                TextField(
+                  key: const Key('account_new_password'),
+                  controller: _newPassword,
+                  decoration: const InputDecoration(labelText: '新密码（至少 8 位）'),
+                  obscureText: true,
+                ),
+                const SizedBox(height: 12),
+                Text('申请提升境界（九境三阶，管理员审核）',
+                    style: Theme.of(context).textTheme.bodySmall),
+                DropdownButtonFormField<String>(
+                  key: const Key('account_degree_realm'),
+                  initialValue: _applyRealm,
+                  hint: const Text('选择目标境界'),
+                  items: [
+                    for (final realm in kDegreeRealms)
+                      DropdownMenuItem(value: realm, child: Text(kDegreeRealmLabels[realm] ?? realm)),
+                  ],
+                  onChanged: (value) => setState(() => _applyRealm = value),
+                ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                  ),
+              ],
+            ),
+      actions: [
+        if (user != null)
+          TextButton(
+            key: const Key('account_logout'),
+            onPressed: _busy ? null : () => _run(() => AuthSession.instance.logout()),
+            child: const Text('退出登录'),
+          ),
+        if (user != null)
+          TextButton(
+            key: const Key('account_change_password'),
+            onPressed: _busy || _oldPassword.text.isEmpty || _newPassword.text.length < 8
+                ? null
+                : () => _run(() => AuthSession.instance.changePassword(
+                      oldPassword: _oldPassword.text,
+                      newPassword: _newPassword.text,
+                    )),
+            child: const Text('修改密码'),
+          ),
+        if (user != null)
+          TextButton(
+            key: const Key('account_apply_degree'),
+            onPressed: _busy || _applyRealm == null
+                ? null
+                : () => _run(() => AuthSession.instance.applyForDegree(_applyRealm!)),
+            child: const Text('提交学位申请'),
+          ),
+        if (user == null)
+          TextButton(
+            key: const Key('account_login'),
+            onPressed: _busy || _username.text.isEmpty || _password.text.isEmpty
+                ? null
+                : () => _run(() => AuthSession.instance.login(_username.text, _password.text)),
+            child: const Text('登录'),
+          ),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('关闭')),
+      ],
     );
   }
 }

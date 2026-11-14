@@ -1,5 +1,6 @@
 ﻿import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { requireAdmin } from '../auth/auth.hooks.js';
 import { HttpError } from '../http/errors.js';
 import { createCategory, createConcept, addKnowledgePoint, loadKnowledgeBundle, updateCategory } from './knowledge.repository.js';
 
@@ -33,12 +34,16 @@ const createConceptSchema = z.object({
   glyph: z.string().trim().max(8).nullable().optional(),
 });
 
-/// 在某个学习程度下追加知识点。
+/// 在某个学习程度下追加知识点；可标注认知层级（缺省「记忆」）。
 const createPointSchema = z.object({
   conceptId: z.string().trim().min(1).max(64),
   ageBandId: z.string().trim().min(1).max(64),
   degreeId: z.string().trim().min(1).max(64),
   point: z.string().trim().min(1).max(500),
+  cognitiveLevel: z
+    .enum(['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'])
+    .optional()
+    .default('remember'),
 });
 
 /// 知识库接口：返回全部内容；支持创建可嵌套子类（父类/子类）与把知识直接挂到分类下。
@@ -48,7 +53,7 @@ export async function knowledgeRoutes(app: FastifyInstance): Promise<void> {
     return reply.header('cache-control', 'no-store').send(bundle);
   });
 
-  app.post('/api/knowledge/categories', async (request) => {
+  app.post('/api/knowledge/categories', { preHandler: requireAdmin }, async (request) => {
     const parsed = createCategorySchema.safeParse(request.body);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -75,7 +80,7 @@ export async function knowledgeRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.patch('/api/knowledge/categories/:id', async (request) => {
+  app.patch('/api/knowledge/categories/:id', { preHandler: requireAdmin }, async (request) => {
     const { id } = request.params as { id: string };
     const parsed = updateCategorySchema.safeParse(request.body);
     if (!parsed.success) {
@@ -93,7 +98,7 @@ export async function knowledgeRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post('/api/knowledge/concepts', async (request) => {
+  app.post('/api/knowledge/concepts', { preHandler: requireAdmin }, async (request) => {
     const parsed = createConceptSchema.safeParse(request.body);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -103,7 +108,7 @@ export async function knowledgeRoutes(app: FastifyInstance): Promise<void> {
     return { concept };
   });
 
-  app.post('/api/knowledge/points', async (request) => {
+  app.post('/api/knowledge/points', { preHandler: requireAdmin }, async (request) => {
     const parsed = createPointSchema.safeParse(request.body);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
