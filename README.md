@@ -51,6 +51,28 @@ study/
 
 年龄档总览见 [doc/readme.md](doc/readme.md)，设计全文见 [doc/design.md](doc/design.md)，数据库用法见 [doc/数据库使用说明.md](doc/数据库使用说明.md)，开发进展记在 [doc/进展.md](doc/进展.md)。
 
+## 一键启动开发环境（Windows）
+
+在仓库根目录运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-dev.ps1
+```
+
+脚本会依次检查并启动 WSL（Arch）中的 PostgreSQL、SeaweedFS、Node 依赖和 Fastify API，再安装 Flutter 依赖并打开 Windows 应用。只有 API 的 `/healthz` 确认数据库和对象存储都正常后才会打开应用；任一强依赖失败都会显示红色错误并终止，不会带病继续启动。
+
+按需使用：
+
+```powershell
+# 只启动服务端，不打开桌面应用
+powershell -ExecutionPolicy Bypass -File .\scripts\start-dev.ps1 -ServerOnly
+
+# 启动前显式执行数据库迁移（日常启动默认不重复执行）
+powershell -ExecutionPolicy Bypass -File .\scripts\start-dev.ps1 -Migrate
+```
+
+首次运行前需准备好 `server/.env`，并在 WSL 中安装 PostgreSQL 与 SeaweedFS 服务。API 运行日志位于 `server/.dev-server.log` 和 `server/.dev-server.error.log`。
+
 ## 客户端 app/
 
 Flutter 应用（`study_app`，中文名「文明重启」，英文名 Lumen），界面语言为简体中文，档案为本机 JSON，可导出副本。
