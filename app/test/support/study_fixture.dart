@@ -52,6 +52,11 @@ class FakeStudyApi implements StudyApi {
   final Map<String, dynamic> knowledge;
   Map<String, Object?> userData;
 
+  /// 内存知识点互动存储：评论、纠错（含审核状态）、章节。
+  final List<Map<String, dynamic>> pointComments = [];
+  final List<Map<String, dynamic>> pointCorrections = [];
+  final List<Map<String, dynamic>> pointChapters = [];
+
   /// 模拟断网：置为 true 后所有请求失败。
   bool offline = false;
 
@@ -81,7 +86,7 @@ class FakeStudyApi implements StudyApi {
     return Map<String, dynamic>.from(userData);
   }
 
-  /// 假的知识点评论列表：测试里默认没有评论。
+  /// 假的知识点评论列表：从内存存储按 ref 过滤。
   @override
   Future<List<Map<String, dynamic>>> fetchPointComments({
     required String conceptId,
@@ -92,10 +97,17 @@ class FakeStudyApi implements StudyApi {
     int? offset,
   }) async {
     _ensureOnline();
-    return const [];
+    return [
+      for (final comment in pointComments)
+        if (comment['conceptId'] == conceptId &&
+            comment['ageBandId'] == ageBandId &&
+            comment['degreeId'] == degreeId &&
+            comment['position'] == position)
+          Map<String, dynamic>.from(comment),
+    ];
   }
 
-  /// 假的知识点评论提交：直接回显正文，不落库。
+  /// 假的知识点评论提交：追加进内存存储。
   @override
   Future<Map<String, dynamic>> createPointComment({
     required String conceptId,
@@ -106,10 +118,20 @@ class FakeStudyApi implements StudyApi {
     required String body,
   }) async {
     _ensureOnline();
-    return {'id': 'fake_comment', 'body': body, 'deviceId': deviceId};
+    final comment = <String, dynamic>{
+      'id': 'fake_comment_${pointComments.length + 1}',
+      'conceptId': conceptId,
+      'ageBandId': ageBandId,
+      'degreeId': degreeId,
+      'position': position,
+      'deviceId': deviceId,
+      'body': body,
+    };
+    pointComments.add(comment);
+    return Map<String, dynamic>.from(comment);
   }
 
-  /// 假的知识点纠错列表：测试里默认没有纠错。
+  /// 假的知识点纠错列表：从内存存储按 ref 过滤。
   @override
   Future<List<Map<String, dynamic>>> fetchPointCorrections({
     required String conceptId,
@@ -120,10 +142,17 @@ class FakeStudyApi implements StudyApi {
     int? offset,
   }) async {
     _ensureOnline();
-    return const [];
+    return [
+      for (final correction in pointCorrections)
+        if (correction['conceptId'] == conceptId &&
+            correction['ageBandId'] == ageBandId &&
+            correction['degreeId'] == degreeId &&
+            correction['position'] == position)
+          Map<String, dynamic>.from(correction),
+    ];
   }
 
-  /// 假的知识点纠错提交：直接回显原文和建议，不落库。
+  /// 假的知识点纠错提交：追加进内存存储，状态待审。
   @override
   Future<Map<String, dynamic>> createPointCorrection({
     required String conceptId,
@@ -135,12 +164,20 @@ class FakeStudyApi implements StudyApi {
     String? suggestedText,
   }) async {
     _ensureOnline();
-    return {
-      'id': 'fake_correction',
-      'body': body,
+    final correction = <String, dynamic>{
+      'id': 'fake_correction_${pointCorrections.length + 1}',
+      'conceptId': conceptId,
+      'ageBandId': ageBandId,
+      'degreeId': degreeId,
+      'position': position,
       'deviceId': deviceId,
+      'body': body,
       'suggestedText': suggestedText,
+      'status': 'pending',
+      'pointsAwarded': 0,
     };
+    pointCorrections.add(correction);
+    return Map<String, dynamic>.from(correction);
   }
 
   /// 假的分类创建：把入参原样返回，方便断言界面收到了什么。
@@ -225,7 +262,14 @@ class FakeStudyApi implements StudyApi {
     required int pointPosition,
   }) async {
     _ensureOnline();
-    return const [];
+    return [
+      for (final chapter in pointChapters)
+        if (chapter['conceptId'] == conceptId &&
+            chapter['ageBandId'] == ageBandId &&
+            chapter['degreeId'] == degreeId &&
+            chapter['pointPosition'] == pointPosition)
+          Map<String, dynamic>.from(chapter),
+    ];
   }
 
   @override
@@ -238,7 +282,29 @@ class FakeStudyApi implements StudyApi {
     String? content,
   }) async {
     _ensureOnline();
-    return {'title': title, 'content': content};
+    // 位置接在该知识点现有章节末尾，与服务端口径一致。
+    var position = 0;
+    for (final chapter in pointChapters) {
+      if (chapter['conceptId'] == conceptId &&
+          chapter['ageBandId'] == ageBandId &&
+          chapter['degreeId'] == degreeId &&
+          chapter['pointPosition'] == pointPosition &&
+          (chapter['chapterPosition'] as int) > position) {
+        position = chapter['chapterPosition'] as int;
+      }
+    }
+    final chapter = <String, dynamic>{
+      'id': 'fake_chapter_${pointChapters.length + 1}',
+      'conceptId': conceptId,
+      'ageBandId': ageBandId,
+      'degreeId': degreeId,
+      'pointPosition': pointPosition,
+      'chapterPosition': position + 1,
+      'title': title,
+      'content': content,
+    };
+    pointChapters.add(chapter);
+    return Map<String, dynamic>.from(chapter);
   }
 
   @override
@@ -252,7 +318,21 @@ class FakeStudyApi implements StudyApi {
     String? content,
   }) async {
     _ensureOnline();
-    return {'chapterPosition': chapterPosition, 'title': title, 'content': content};
+    for (var i = 0; i < pointChapters.length; i++) {
+      final chapter = pointChapters[i];
+      if (chapter['conceptId'] == conceptId &&
+          chapter['ageBandId'] == ageBandId &&
+          chapter['degreeId'] == degreeId &&
+          chapter['pointPosition'] == pointPosition &&
+          chapter['chapterPosition'] == chapterPosition) {
+        final updated = Map<String, dynamic>.from(chapter)
+          ..['title'] = title
+          ..['content'] = content;
+        pointChapters[i] = updated;
+        return Map<String, dynamic>.from(updated);
+      }
+    }
+    throw StudyApiException('章节不存在');
   }
 
   @override
@@ -264,6 +344,14 @@ class FakeStudyApi implements StudyApi {
     required int chapterPosition,
   }) async {
     _ensureOnline();
+    pointChapters.removeWhere(
+      (chapter) =>
+          chapter['conceptId'] == conceptId &&
+          chapter['ageBandId'] == ageBandId &&
+          chapter['degreeId'] == degreeId &&
+          chapter['pointPosition'] == pointPosition &&
+          chapter['chapterPosition'] == chapterPosition,
+    );
   }
 
   @override
@@ -274,17 +362,25 @@ class FakeStudyApi implements StudyApi {
     int points = 0,
   }) async {
     _ensureOnline();
-    return {
-      'id': correctionId,
-      'status': approve ? 'approved' : 'rejected',
-      'pointsAwarded': approve ? points : 0,
-    };
+    for (var i = 0; i < pointCorrections.length; i++) {
+      if (pointCorrections[i]['id'] == correctionId) {
+        pointCorrections[i] = Map<String, dynamic>.from(pointCorrections[i])
+          ..['status'] = approve ? 'approved' : 'rejected'
+          ..['pointsAwarded'] = approve ? points : 0
+          ..['reviewerDeviceId'] = reviewerDeviceId;
+        return Map<String, dynamic>.from(pointCorrections[i]);
+      }
+    }
+    throw StudyApiException('纠错不存在');
   }
 
   @override
   Future<List<Map<String, dynamic>>> fetchPendingPointCorrections({int? limit, int? offset}) async {
     _ensureOnline();
-    return const [];
+    return [
+      for (final correction in pointCorrections)
+        if (correction['status'] == 'pending') Map<String, dynamic>.from(correction),
+    ];
   }
 
   @override
@@ -305,7 +401,26 @@ class FakeStudyApi implements StudyApi {
   @override
   Future<Map<String, dynamic>> fetchPointCredits(String deviceId, {int? limit, int? offset}) async {
     _ensureOnline();
-    return {'deviceId': deviceId, 'balance': 0, 'items': const []};
+    // 余额 = 该设备全部纠错已发放积分之和，与服务端口径一致。
+    var balance = 0;
+    for (final correction in pointCorrections) {
+      if (correction['deviceId'] == deviceId) {
+        balance += (correction['pointsAwarded'] as int?) ?? 0;
+      }
+    }
+    return {
+      'deviceId': deviceId,
+      'balance': balance,
+      'items': [
+        for (final correction in pointCorrections)
+          if (correction['deviceId'] == deviceId && (correction['pointsAwarded'] as int? ?? 0) > 0)
+            {
+              'amount': correction['pointsAwarded'],
+              'reason': '知识点纠错审核通过奖励',
+              'correctionId': correction['id'],
+            },
+      ],
+    };
   }
 
   @override

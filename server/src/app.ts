@@ -8,6 +8,7 @@ import { config } from './config.js';
 import { degreeRoutes } from './degree/degree.routes.js';
 import { healthRoutes } from './health.routes.js';
 import { HttpError } from './http/errors.js';
+import { ensureBucket } from './storage.js';
 import { chapterRoutes } from './knowledge/chapter.routes.js';
 import { knowledgeRoutes } from './knowledge/knowledge.routes.js';
 import { pointFeedbackRoutes } from './knowledge/point_feedback.routes.js';
@@ -93,6 +94,10 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // 内置管理员（admin/admin，首登强制改密）；库还没迁移时会报错，由启动日志暴露。
   await ensureAdminUser();
+
+  // 桶不存在就建一个（幂等、带就绪重试）。放在 buildApp 里而不是启动脚本，
+  // 这样测试或任何 buildApp 引导在全新卷上也能自愈，健康检查不会 503。
+  await ensureBucket();
 
   return app;
 }
