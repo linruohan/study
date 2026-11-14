@@ -63,6 +63,11 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.menu_book_outlined));
     await tester.pumpAndSettle();
+    // 020 后「语言文字」是教养之学下的子类：先展开父类，再进入子类。
+    await tester.tap(find.byKey(const Key('tree_expand_education')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('tree_category_tile_language')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('knowledge_zi_ri')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('add_to_plan')));
