@@ -49,7 +49,7 @@ study/
 | [doc/大学](doc/大学/目录.md) | 18–20 岁：通识、专业和一项做完的项目 |
 | [doc/社会](doc/社会/目录.md) | 离开学校以后：公共文本、健康与科学，用在生活里 |
 
-年龄档总览见 [doc/readme.md](doc/readme.md)，设计全文见 [doc/design.md](doc/design.md)，数据库用法见 [doc/数据库使用说明.md](doc/数据库使用说明.md)，开发进展记在 [doc/进展.md](doc/进展.md)。
+年龄档总览见 [doc/readme.md](doc/readme.md)，设计全文见 [doc/design.md](doc/design.md)，数据库用法见 [doc/数据库使用说明.md](doc/数据库使用说明.md)，部署与使用(含踩坑)见 [doc/部署与使用指导.md](doc/部署与使用指导.md)，开发进展记在 [doc/进展.md](doc/进展.md)。
 
 ## 一键启动开发环境（Windows）
 
