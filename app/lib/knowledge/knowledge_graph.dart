@@ -1,56 +1,33 @@
 import 'age_band.dart';
 import 'concept.dart';
-import 'domain.dart';
 import 'taxonomy.dart';
 
-/// 知识图谱：把数据库返回的领域与分类包成界面需要的查询。
+/// 知识图谱：把数据库返回的分类树（父类/子类）包成界面需要的查询。
 ///
-/// 客户端只保留查询逻辑，不再内置任何领域或分类数据。
+/// 客户端只保留查询逻辑，不再内置任何分类数据。
 class KnowledgeGraph {
-  KnowledgeGraph({required this.domains, required this.categories});
+  KnowledgeGraph({required this.categories});
 
-  /// 已接入的领域，顺序就是引导路径的默认优先顺序。
-  final List<LearningDomain> domains;
-
-  /// 九类分类，顺序来自数据库。
+  /// 分类树（父类/子类，可嵌套），知识直接挂在分类上；顶级顺序来自数据库。
   final List<ScholarCategory> categories;
 
-  /// 本档有内容的领域。
-  List<LearningDomain> domainsFor(AgeBand band) {
-    return domains.where((domain) => domain.hasContent(band)).toList();
+  /// 本档有内容的分类。
+  List<ScholarCategory> categoriesWithContent(AgeBand band) {
+    return categories.where((category) => category.hasContent(band)).toList();
   }
 
-  /// 九大基类/根分类（无父级）。
+  /// 顶级分类（无父级）。
   List<ScholarCategory> get rootCategories =>
       categories.where((c) => c.parentId == null).toList();
 
-  /// 某分类的直接子类型。
+  /// 某分类的直接子类。
   List<ScholarCategory> childrenOf(String categoryId) =>
       categories.where((c) => c.parentId == categoryId).toList();
 
-  /// 某分类下直接挂载的、在本档可见的领域。
-  List<LearningDomain> directDomainsInCategory(
-    ScholarCategory category,
-    AgeBand band,
-  ) {
-    return domainsFor(band)
-        .where((domain) => domain.category.id == category.id)
-        .toList();
-  }
-
-  /// 某一类别下挂载的全部领域（不看本档有没有内容）。
+  /// 某分类及其所有后代子类。
   ///
-  /// 知识库树用这个来展示刚新建、还没添加知识的空领域。
-  List<LearningDomain> allDomainsInCategory(ScholarCategory category) {
-    return domains
-        .where((domain) => domain.category.id == category.id)
-        .toList();
-  }
-
-  /// 某分类及其所有后代子类型下挂载的领域。
-  ///
-  /// 新建知识时用来就近选择领域，空子类型也能落到父级的领域里。
-  List<LearningDomain> domainsUnderCategory(ScholarCategory category) {
+  /// 新建知识时用来就近选择分类，空子类也能落进去。
+  List<ScholarCategory> categoriesUnder(ScholarCategory category) {
     final ids = <String>{};
     void walk(ScholarCategory current) {
       if (!ids.add(current.id)) {
@@ -62,30 +39,10 @@ class KnowledgeGraph {
     }
 
     walk(category);
-    return domains.where((domain) => ids.contains(domain.category.id)).toList();
+    return categories.where((c) => ids.contains(c.id)).toList();
   }
 
-  /// 九类分类在本档的视图（兼容旧接口）：包含所有分类及其直接领域。
-  List<({ScholarCategory category, List<LearningDomain> domains})>
-      categoriesFor(AgeBand band) {
-    return [
-      for (final category in categories)
-        (
-          category: category,
-          domains: directDomainsInCategory(category, band),
-        ),
-    ];
-  }
-
-  /// 某一类别下本档有内容的领域（含直接挂载）。
-  List<LearningDomain> domainsInCategory(
-    ScholarCategory category,
-    AgeBand band,
-  ) {
-    return directDomainsInCategory(category, band);
-  }
-
-  /// 按 id 找分类。
+  /// 按 id 找分类，找不到返回 null。
   ScholarCategory? categoryById(String id) {
     for (final category in categories) {
       if (category.id == id) return category;
@@ -93,20 +50,10 @@ class KnowledgeGraph {
     return null;
   }
 
-  /// 按 id 找领域，找不到返回 null。
-  LearningDomain? domainById(String id) {
-    for (final domain in domains) {
-      if (domain.id == id) {
-        return domain;
-      }
-    }
-    return null;
-  }
-
   /// 按 id 找概念，找不到返回 null。
   Concept? conceptById(String id) {
-    for (final domain in domains) {
-      for (final concept in domain.concepts) {
+    for (final category in categories) {
+      for (final concept in category.concepts) {
         if (concept.id == id) {
           return concept;
         }
@@ -131,22 +78,23 @@ class KnowledgeGraph {
     return true;
   }
 
-  /// 今日下一步：关注领域优先，其次按领域顺序和深浅。
+  /// 今日下一步：关注分类优先，其次按分类顺序和深浅。
   Concept? nextStep(
     AgeBand band,
     Set<String> ready, {
-    String? focusDomainId,
+    String? focusCategoryId,
   }) {
-    final candidates = <({int rank, int domainOrder, Concept concept})>[];
-    for (var order = 0; order < domains.length; order++) {
-      final domain = domains[order];
-      for (final concept in domain.conceptsFor(band)) {
+    final candidates =
+        <({int rank, int categoryOrder, Concept concept})>[];
+    for (var order = 0; order < categories.length; order++) {
+      final category = categories[order];
+      for (final concept in category.conceptsFor(band)) {
         if (ready.contains(concept.id) || !unlocked(concept, ready, band)) {
           continue;
         }
         candidates.add((
-          rank: domain.id == focusDomainId ? 0 : 1,
-          domainOrder: order,
+          rank: category.id == focusCategoryId ? 0 : 1,
+          categoryOrder: order,
           concept: concept,
         ));
       }
@@ -163,18 +111,22 @@ class KnowledgeGraph {
       if (byDepth != 0) {
         return byDepth;
       }
-      final byDomain = a.domainOrder.compareTo(b.domainOrder);
-      if (byDomain != 0) {
-        return byDomain;
+      final byCategory = a.categoryOrder.compareTo(b.categoryOrder);
+      if (byCategory != 0) {
+        return byCategory;
       }
       return a.concept.id.compareTo(b.concept.id);
     });
     return candidates.first.concept;
   }
 
-  /// 某领域在本档已到达熟练或掌握的概念数，用来显示进度。
-  int readyCount(LearningDomain domain, AgeBand band, Set<String> ready) {
-    return domain.conceptsFor(band)
+  /// 某分类在本档已到达熟练或掌握的知识数，用来显示进度。
+  int readyCount(
+    ScholarCategory category,
+    AgeBand band,
+    Set<String> ready,
+  ) {
+    return category.conceptsFor(band)
         .where((concept) => ready.contains(concept.id))
         .length;
   }

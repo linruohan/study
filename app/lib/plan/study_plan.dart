@@ -36,16 +36,16 @@ enum PlanDepth {
 /// 一条本机学习计划。
 ///
 /// 两种形态并存：
-/// - 领域级计划（[conceptId] 为 null）：在某个时间学某个领域，走阶梯，
+/// - 分类级计划（[conceptId] 为 null）：在某个时间学某个分类，走阶梯，
 ///   到点提醒、完成后标 done，与旧版一致。
 /// - 知识级计划（[conceptId] 不为 null）：从知识详情页按学习程度加入，
-///   在「规划」页按领域分组列出，点开进入该程度的知识点学习页。
+///   在「规划」页按分类分组列出，点开进入该程度的知识点学习页。
 ///
 /// 计划保存在数据库里，按设备区分；到点提醒只在应用打开时出现。
 class StudyPlan {
   const StudyPlan({
     required this.id,
-    required this.domainId,
+    required this.categoryId,
     required this.depth,
     required this.startAt,
     this.conceptId,
@@ -59,8 +59,8 @@ class StudyPlan {
   /// 稳定标识，用于列表更新与删除。
   final String id;
 
-  /// 要学的领域 id。
-  final String domainId;
+  /// 要学的分类 id。
+  final String categoryId;
 
   /// 简单了解或深入学习；知识级计划用它记录加入时的方向。
   final PlanDepth depth;
@@ -103,7 +103,7 @@ class StudyPlan {
   }) {
     return StudyPlan(
       id: id,
-      domainId: domainId,
+      categoryId: categoryId,
       depth: depth ?? this.depth,
       conceptId: conceptId,
       degree: degree,
@@ -118,7 +118,7 @@ class StudyPlan {
   Map<String, Object?> toJson() {
     return {
       'id': id,
-      'domainId': domainId,
+      'categoryId': categoryId,
       'depth': depth.name,
       'startAt': startAt.toIso8601String(),
       if (conceptId != null) 'conceptId': conceptId,
@@ -133,17 +133,19 @@ class StudyPlan {
   /// 读取一条计划；字段缺失或损坏时返回 null，让坏数据被跳过。
   static StudyPlan? fromJson(Map<String, Object?> json) {
     final id = json['id'];
-    final domainId = json['domainId'];
+    // 旧数据里的键叫 domainId，值（分类 id）迁移后不变。
+    final categoryId =
+        (json['categoryId'] ?? json['domainId']) as String?;
     final depth = PlanDepth.fromName(json['depth'] as String?);
     final startAt = DateTime.tryParse(json['startAt'] as String? ?? '');
-    if (id is! String || domainId is! String || depth == null || startAt == null) {
+    if (id is! String || categoryId is! String || depth == null || startAt == null) {
       return null;
     }
     final remindedRaw = json['remindedAt'] as String?;
     final snoozedRaw = json['snoozedUntil'] as String?;
     return StudyPlan(
       id: id,
-      domainId: domainId,
+      categoryId: categoryId,
       depth: depth,
       conceptId: json['conceptId'] as String?,
       degree: KnowledgeCatalog.maybeInstance?.degreeById(

@@ -209,24 +209,9 @@ class StudyRepository {
     String question = '',
   }) => _api.updateCategory(id: id, name: name, question: question);
 
-  /// 在指定分类下新建学习领域；创建后由界面触发知识库刷新。
-  Future<Map<String, dynamic>> createDomain({
-    String? id,
-    required String categoryId,
-    required String name,
-    String glyph = '域',
-    String color = '#7A6A54',
-  }) => _api.createDomain(
-    id: id,
-    categoryId: categoryId,
-    name: name,
-    glyph: glyph,
-    color: color,
-  );
-
-  /// 在指定领域下新建一条知识；创建后由界面刷新知识目录。
+  /// 在指定分类下新建一条知识；创建后由界面刷新知识目录。
   Future<Map<String, dynamic>> createKnowledge({
-    required String domainId,
+    required String categoryId,
     required String ageBandId,
     required String topic,
     String? doing,
@@ -236,7 +221,7 @@ class StudyRepository {
     String? note,
     String? glyph,
   }) => _api.createKnowledge(
-    domainId: domainId,
+    categoryId: categoryId,
     ageBandId: ageBandId,
     topic: topic,
     doing: doing,

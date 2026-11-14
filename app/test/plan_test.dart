@@ -16,7 +16,7 @@ void main() {
     final start = DateTime(2026, 11, 9, 19, 30);
     final plan = StudyPlan(
       id: 'p1',
-      domainId: 'language',
+      categoryId: 'language',
       depth: PlanDepth.deep,
       startAt: start,
       remind: true,
@@ -25,7 +25,7 @@ void main() {
 
     final loaded = await study.planStore.load();
     expect(loaded.single.id, 'p1');
-    expect(loaded.single.domainId, 'language');
+    expect(loaded.single.categoryId, 'language');
     expect(loaded.single.depth, PlanDepth.deep);
     expect(loaded.single.startAt, start);
     expect(loaded.single.remind, isTrue);
@@ -36,7 +36,7 @@ void main() {
   test('坏掉的计划条目会被跳过，不影响启动', () async {
     final api = FakeStudyApi(
       userData: {
-        'profile': {'band': null, 'focusDomainId': null},
+        'profile': {'band': null, 'focusCategoryId': null},
         'plans': [
           {'bad': true},
         ],
@@ -55,7 +55,7 @@ void main() {
 
     final plan = StudyPlan(
       id: 'p2',
-      domainId: 'language',
+      categoryId: 'language',
       depth: PlanDepth.deep,
       conceptId: 'zi_ri',
       degree: testDegree('familiar'),
@@ -70,13 +70,13 @@ void main() {
     expect(loaded.single.isConceptPlan, isTrue);
   });
 
-  test('领域级旧计划没有概念 id，读回后仍是领域级', () async {
+  test('分类级旧计划没有概念 id，读回后仍是分类级', () async {
     final study = await TestStudy.create();
     addTearDown(study.dispose);
 
     final plan = StudyPlan(
       id: 'p1',
-      domainId: 'language',
+      categoryId: 'language',
       depth: PlanDepth.brief,
       startAt: DateTime(2026, 11, 11, 8),
     );
@@ -108,8 +108,10 @@ void main() {
     await tester.pumpWidget(StudyApp(repository: study.repository));
     await tester.pumpAndSettle();
 
-    // 知识库 → 点「日」的知识卡 → 详情页按「入门」加入计划。
+    // 知识库 → 进「语」子类 → 点「日」的知识卡 → 详情页按「入门」加入计划。
     await tester.tap(find.byIcon(Icons.menu_book_outlined));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('category_card_language')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('knowledge_zi_ri')));
     await tester.pumpAndSettle();
@@ -121,7 +123,7 @@ void main() {
     final loaded = await study.planStore.load();
     expect(loaded.single.conceptId, 'zi_ri');
     expect(loaded.single.degree?.id, 'beginner');
-    expect(loaded.single.domainId, 'language');
+    expect(loaded.single.categoryId, 'language');
     expect(find.textContaining('已加入计划'), findsOneWidget);
   });
 
@@ -138,7 +140,7 @@ void main() {
       plans: [
         StudyPlan(
           id: 'due',
-          domainId: 'language',
+          categoryId: 'language',
           depth: PlanDepth.brief,
           startAt: DateTime.now().subtract(const Duration(minutes: 1)),
         ),

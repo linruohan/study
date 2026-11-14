@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../data/study_repository.dart';
 import '../knowledge/age_band.dart';
-import '../knowledge/domain.dart';
+import '../knowledge/taxonomy.dart';
 import 'theme.dart';
 
 /// 在知识库中新建一条知识的弹窗。
 ///
-/// 知识挂到某个领域，随后可在详情页按学习程度补充知识点与章节。
+/// 知识挂到某个分类下，随后可在详情页按学习程度补充知识点与章节。
 class AddKnowledgeDialog extends StatefulWidget {
   const AddKnowledgeDialog({
     super.key,
     required this.repository,
     required this.band,
-    required this.domains,
-    this.initialDomain,
+    required this.categories,
+    this.initialCategory,
   });
 
   final StudyRepository repository;
@@ -22,11 +22,11 @@ class AddKnowledgeDialog extends StatefulWidget {
   /// 当前年龄档，新知识只写这一档的呈现。
   final AgeBand band;
 
-  /// 可选的领域，通常来自当前年龄档。
-  final List<LearningDomain> domains;
+  /// 可选的分类，来自当前知识库的分类树。
+  final List<ScholarCategory> categories;
 
-  /// 默认选中的领域，一般是当前分类下的第一个。
-  final LearningDomain? initialDomain;
+  /// 默认选中的分类，一般是当前选中的分类。
+  final ScholarCategory? initialCategory;
 
   @override
   State<AddKnowledgeDialog> createState() => _AddKnowledgeDialogState();
@@ -37,8 +37,8 @@ class _AddKnowledgeDialogState extends State<AddKnowledgeDialog> {
   final _doingController = TextEditingController();
   final _noteController = TextEditingController();
 
-  late LearningDomain _domain =
-      widget.initialDomain ?? widget.domains.first;
+  late ScholarCategory _category =
+      widget.initialCategory ?? widget.categories.first;
 
   var _saving = false;
   String? _error;
@@ -64,7 +64,7 @@ class _AddKnowledgeDialogState extends State<AddKnowledgeDialog> {
     });
     try {
       await widget.repository.createKnowledge(
-        domainId: _domain.id,
+        categoryId: _category.id,
         ageBandId: widget.band.id,
         topic: topic,
         doing: _doingController.text.trim().isEmpty
@@ -104,23 +104,23 @@ class _AddKnowledgeDialogState extends State<AddKnowledgeDialog> {
             children: [
               Text('年龄档：${widget.band.label}', style: text.bodySmall),
               const SizedBox(height: 12),
-              DropdownButtonFormField<LearningDomain>(
-                initialValue: _domain,
+              DropdownButtonFormField<ScholarCategory>(
+                initialValue: _category,
                 decoration: const InputDecoration(
-                  labelText: '所属领域',
+                  labelText: '所属分类',
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
                 items: [
-                  for (final domain in widget.domains)
+                  for (final category in widget.categories)
                     DropdownMenuItem(
-                      value: domain,
-                      child: Text(domain.displayNameFor(widget.band)),
+                      value: category,
+                      child: Text(category.displayNameFor(widget.band)),
                     ),
                 ],
                 onChanged: (value) {
                   if (value != null) {
-                    setState(() => _domain = value);
+                    setState(() => _category = value);
                   }
                 },
               ),

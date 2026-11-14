@@ -34,7 +34,7 @@ void main() {
       band: testBand('toddler'),
       learner: learner,
     );
-    final language = standings.firstWhere((standing) => standing.domain.id == 'language');
+    final language = standings.firstWhere((standing) => standing.category.id == 'language');
     expect(language.ready, 1);
     expect(language.level, StudyLevel.primary);
 
@@ -55,7 +55,7 @@ void main() {
       band: testBand('toddler'),
       learner: learner,
     );
-    final language = standings.firstWhere((standing) => standing.domain.id == 'language');
+    final language = standings.firstWhere((standing) => standing.category.id == 'language');
     expect(language.level, StudyLevel.expert);
 
     final badges = buildAchievements(
@@ -65,7 +65,7 @@ void main() {
       plans: [
         StudyPlan(
           id: 'p1',
-          domainId: 'language',
+          categoryId: 'language',
           depth: PlanDepth.deep,
           startAt: DateTime(2026, 1, 1),
           done: true,

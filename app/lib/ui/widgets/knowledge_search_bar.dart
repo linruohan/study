@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../knowledge/age_band.dart';
 import '../../knowledge/concept.dart';
-import '../../knowledge/domain.dart';
+import '../../knowledge/taxonomy.dart';
 import '../../knowledge/knowledge_catalog.dart';
 import '../../knowledge/knowledge_graph.dart';
 import '../theme.dart';
@@ -23,7 +23,7 @@ class KnowledgeSearchBar extends StatefulWidget {
   final AgeBand band;
 
   /// 点中一条结果后打开知识详情。
-  final void Function(Concept concept, LearningDomain domain) onOpen;
+  final void Function(Concept concept, ScholarCategory category) onOpen;
 
   @override
   State<KnowledgeSearchBar> createState() => _KnowledgeSearchBarState();
@@ -40,7 +40,7 @@ class _KnowledgeSearchBarState extends State<KnowledgeSearchBar> {
 
   /// 按关键词在当前年龄档的知识里做包含匹配。
   ///
-  /// 领域名和分类名也参与匹配，方便直接搜「历史」找到整类知识。
+  /// 分类名也参与匹配，方便直接搜「历史」找到整类知识。
   List<_KnowledgeHit> _search(String rawQuery) {
     final query = rawQuery.trim().toLowerCase();
     if (query.isEmpty) {
@@ -48,17 +48,15 @@ class _KnowledgeSearchBarState extends State<KnowledgeSearchBar> {
     }
     final degrees = KnowledgeCatalog.instance.degrees;
     final hits = <_KnowledgeHit>[];
-    for (final domain in widget.graph.domains) {
-      if (!domain.concepts.any((concept) => concept.availableIn(widget.band))) {
+    for (final category in widget.graph.categories) {
+      if (!category.concepts.any((concept) => concept.availableIn(widget.band))) {
         continue;
       }
-      final domainText =
-          '${domain.category.name} ${domain.displayNameFor(widget.band)}'
-              .toLowerCase();
-      for (final concept in domain.conceptsFor(widget.band)) {
+      final categoryText = category.displayNameFor(widget.band).toLowerCase();
+      for (final concept in category.conceptsFor(widget.band)) {
         final variant = concept.variantFor(widget.band);
         final haystack = <String>[
-          domainText,
+          categoryText,
           variant.topic,
           variant.doing,
           variant.praise,
@@ -68,7 +66,7 @@ class _KnowledgeSearchBarState extends State<KnowledgeSearchBar> {
           for (final degree in degrees) ...variant.pointsFor(degree),
         ].join('\n').toLowerCase();
         if (haystack.contains(query)) {
-          hits.add(_KnowledgeHit(concept: concept, domain: domain));
+          hits.add(_KnowledgeHit(concept: concept, category: category));
         }
       }
     }
@@ -126,18 +124,18 @@ class _KnowledgeSearchBarState extends State<KnowledgeSearchBar> {
             ListTile(
               key: Key('search_result_${hit.concept.id}'),
               leading: GlyphBadge(
-                glyph: hit.domain.glyph,
-                color: hit.domain.color,
+                glyph: hit.category.glyph,
+                color: hit.category.color,
                 size: 28,
                 fontSize: 12,
               ),
               title: Text(hit.concept.variantFor(widget.band).topic),
               subtitle: Text(
-                '${hit.domain.category.name} · ${hit.domain.displayNameFor(widget.band)}',
+                hit.category.displayNameFor(widget.band),
               ),
               onTap: () {
                 controller.closeView(null);
-                widget.onOpen(hit.concept, hit.domain);
+                widget.onOpen(hit.concept, hit.category);
               },
             ),
         ];
@@ -146,10 +144,10 @@ class _KnowledgeSearchBarState extends State<KnowledgeSearchBar> {
   }
 }
 
-/// 一条命中的知识及它所属领域。
+/// 一条命中的知识及它所属分类。
 class _KnowledgeHit {
-  const _KnowledgeHit({required this.concept, required this.domain});
+  const _KnowledgeHit({required this.concept, required this.category});
 
   final Concept concept;
-  final LearningDomain domain;
+  final ScholarCategory category;
 }

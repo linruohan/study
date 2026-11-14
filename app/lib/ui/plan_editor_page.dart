@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../knowledge/age_band.dart';
-import '../knowledge/domain.dart';
+import '../knowledge/taxonomy.dart';
 import '../knowledge/knowledge_graph.dart';
 import '../plan/plan_text.dart';
 import '../plan/study_plan.dart';
@@ -9,14 +9,14 @@ import 'theme.dart';
 import 'widgets/glyph_badge.dart';
 import 'widgets/section_header.dart';
 
-/// 新建学习计划：选领域、选方向（简单了解或深入学习）、选开始时间与提醒。
+/// 新建学习计划：选分类、选方向（简单了解或深入学习）、选开始时间与提醒。
 class PlanEditorPage extends StatefulWidget {
   const PlanEditorPage({
     super.key,
     required this.graph,
     required this.band,
     this.now,
-    this.initialDomainId,
+    this.initialCategoryId,
     this.initialDepth,
   });
 
@@ -26,8 +26,8 @@ class PlanEditorPage extends StatefulWidget {
   /// 测试可注入当前时间；为空时用真实时间。
   final DateTime? now;
 
-  /// 从某个知识点进来时，预先选好它的领域。
-  final String? initialDomainId;
+  /// 从某个知识点进来时，预先选好它的分类。
+  final String? initialCategoryId;
 
   /// 从某个知识点进来时，预先选好的方向。
   final PlanDepth? initialDepth;
@@ -38,9 +38,9 @@ class PlanEditorPage extends StatefulWidget {
 
 class _PlanEditorPageState extends State<PlanEditorPage> {
   late final DateTime _now = widget.now ?? DateTime.now();
-  late final List<LearningDomain> _domains = widget.graph.domainsFor(widget.band);
-  late String? _domainId = widget.initialDomainId ??
-      (_domains.isEmpty ? null : _domains.first.id);
+  late final List<ScholarCategory> _categories = widget.graph.categoriesWithContent(widget.band);
+  late String? _categoryId = widget.initialCategoryId ??
+      (_categories.isEmpty ? null : _categories.first.id);
   late PlanDepth _depth = widget.initialDepth ?? PlanDepth.brief;
   late DateTime _startAt = _defaultStart();
   var _remind = true;
@@ -104,8 +104,8 @@ class _PlanEditorPageState extends State<PlanEditorPage> {
 
   /// 保存计划，把整条计划交给首页写入本机。
   void _save() {
-    final domainId = _domainId;
-    if (domainId == null) {
+    final categoryId = _categoryId;
+    if (categoryId == null) {
       return;
     }
     final stamp = widget.now?.microsecondsSinceEpoch ??
@@ -113,7 +113,7 @@ class _PlanEditorPageState extends State<PlanEditorPage> {
     Navigator.of(context).pop(
       StudyPlan(
         id: 'plan_$stamp',
-        domainId: domainId,
+        categoryId: categoryId,
         depth: _depth,
         startAt: _startAt,
         remind: _remind,
@@ -130,16 +130,16 @@ class _PlanEditorPageState extends State<PlanEditorPage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
           children: [
-            const SectionHeader(title: '选一个领域'),
+            const SectionHeader(title: '选一个分类'),
             const SizedBox(height: 6),
             Text('计划会从这一档的阶梯开始。', style: text.bodySmall),
             const SizedBox(height: 12),
-            for (final domain in _domains) ...[
-              _domainRow(context, domain),
+            for (final category in _categories) ...[
+              _categoryRow(context, category),
               const SizedBox(height: 10),
             ],
-            if (_domains.isEmpty) ...[
-              Text('这一档还没有可学的领域。', style: text.bodyMedium),
+            if (_categories.isEmpty) ...[
+              Text('这一档还没有可学的分类。', style: text.bodyMedium),
               const SizedBox(height: 10),
             ],
             const SizedBox(height: 14),
@@ -185,7 +185,7 @@ class _PlanEditorPageState extends State<PlanEditorPage> {
             const SizedBox(height: 20),
             FilledButton(
               key: const Key('save_plan'),
-              onPressed: _domains.isEmpty ? null : _save,
+              onPressed: _categories.isEmpty ? null : _save,
               child: const Text('保存计划'),
             ),
           ],
@@ -194,26 +194,26 @@ class _PlanEditorPageState extends State<PlanEditorPage> {
     );
   }
 
-  /// 领域一行：图标、名称、选中标记；点整行即选中。
-  Widget _domainRow(BuildContext context, LearningDomain domain) {
+  /// 分类一行：图标、名称、选中标记；点整行即选中。
+  Widget _categoryRow(BuildContext context, ScholarCategory category) {
     final text = Theme.of(context).textTheme;
-    final selected = domain.id == _domainId;
+    final selected = category.id == _categoryId;
     return PaperCard(
-      key: Key('plan_domain_${domain.id}'),
+      key: Key('plan_category_${category.id}'),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      onTap: () => setState(() => _domainId = domain.id),
+      onTap: () => setState(() => _categoryId = category.id),
       child: Row(
         children: [
           GlyphBadge(
-            glyph: domain.glyph,
-            color: domain.color,
+            glyph: category.glyph,
+            color: category.color,
             size: 40,
             fontSize: 18,
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Text(
-              domain.displayNameFor(widget.band),
+              category.displayNameFor(widget.band),
               style: text.titleMedium,
             ),
           ),

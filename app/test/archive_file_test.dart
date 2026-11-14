@@ -61,13 +61,13 @@ void main() {
       subject: '语',
       body: '指出太阳是「日」',
       conceptId: 'zi_ri',
-      domainId: 'language',
+      categoryId: 'language',
       ageBandId: 'toddler',
     );
     final loaded = await study.archiveStore.load();
 
     expect(loaded.records.single.conceptId, 'zi_ri');
-    expect(loaded.records.single.domainId, 'language');
+    expect(loaded.records.single.categoryId, 'language');
     expect(loaded.records.single.ageBandId, 'toddler');
   });
 }

@@ -3,21 +3,21 @@ import 'package:flutter/material.dart';
 import '../archive/archive_store.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
-import '../knowledge/domain.dart';
 import '../knowledge/knowledge_graph.dart';
+import '../knowledge/taxonomy.dart';
 import '../learning/ladder.dart';
 import '../learning/learner_state.dart';
 import 'concept_page.dart';
 import 'ladder_list.dart';
 import 'widgets/page_header.dart';
 
-/// 一个领域的完整阶梯：从浅到深，点开一格就学。
-class DomainPage extends StatefulWidget {
-  const DomainPage({
+/// 一个分类的完整阶梯：从浅到深，点开一格就学。
+class CategoryPage extends StatefulWidget {
+  const CategoryPage({
     super.key,
     required this.archive,
     required this.band,
-    required this.domain,
+    required this.category,
     required this.graph,
     this.maxDepth,
     this.onFinish,
@@ -25,7 +25,7 @@ class DomainPage extends StatefulWidget {
 
   final ArchiveStore archive;
   final AgeBand band;
-  final LearningDomain domain;
+  final ScholarCategory category;
   final KnowledgeGraph graph;
 
   /// 只显示这一层及更浅的格子；null 表示走完整条阶梯。
@@ -35,10 +35,10 @@ class DomainPage extends StatefulWidget {
   final VoidCallback? onFinish;
 
   @override
-  State<DomainPage> createState() => _DomainPageState();
+  State<CategoryPage> createState() => _CategoryPageState();
 }
 
-class _DomainPageState extends State<DomainPage> {
+class _CategoryPageState extends State<CategoryPage> {
   LearnerState? _learner;
 
   @override
@@ -57,13 +57,13 @@ class _DomainPageState extends State<DomainPage> {
   }
 
   Future<void> _open(Concept concept) async {
-    final domain = widget.domain;
+    final category = widget.category;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ConceptPage(
           archive: widget.archive,
           band: widget.band,
-          domain: domain,
+          category: category,
           concept: concept,
         ),
       ),
@@ -75,7 +75,7 @@ class _DomainPageState extends State<DomainPage> {
   List<LadderEntry> _visibleEntries(LearnerState learner) {
     final entries = buildLadder(
       graph: widget.graph,
-      domain: widget.domain,
+      category: widget.category,
       band: widget.band,
       learner: learner,
     );
@@ -91,7 +91,7 @@ class _DomainPageState extends State<DomainPage> {
     final learner = _learner;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.domain.displayNameFor(widget.band)),
+        title: Text(widget.category.displayNameFor(widget.band)),
       ),
       body: SafeArea(
         child: ListView(
@@ -112,7 +112,7 @@ class _DomainPageState extends State<DomainPage> {
             if (learner != null)
               LadderList(
                 entries: _visibleEntries(learner),
-                domainColor: widget.domain.color,
+                domainColor: widget.category.color,
                 onOpen: _open,
               ),
           ],

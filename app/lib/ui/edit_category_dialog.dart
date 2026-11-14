@@ -10,12 +10,16 @@ class EditCategoryDialog extends StatefulWidget {
     super.key,
     required this.repository,
     required this.category,
+    this.parentName,
   });
 
   final StudyRepository repository;
 
   /// 要修改的分类。
   final ScholarCategory category;
+
+  /// 父类名称；为 null 表示这是顶级分类。
+  final String? parentName;
 
   @override
   State<EditCategoryDialog> createState() => _EditCategoryDialogState();
@@ -81,6 +85,19 @@ class _EditCategoryDialogState extends State<EditCategoryDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: '父类',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                // 父类只读展示，避免改名称时误动层级。
+                child: Text(
+                  widget.parentName ?? '无（顶级分类）',
+                  key: const Key('edit_category_parent'),
+                ),
+              ),
+              const SizedBox(height: 12),
               TextField(
                 key: const Key('edit_category_name'),
                 controller: _nameController,

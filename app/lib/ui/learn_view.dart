@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
-import '../knowledge/domain.dart';
+import '../knowledge/taxonomy.dart';
 import '../knowledge/knowledge_graph.dart';
 import '../learning/learner_state.dart';
 import '../plan/study_plan.dart';
@@ -21,7 +21,7 @@ class LearnView extends StatelessWidget {
     required this.graph,
     required this.band,
     required this.learner,
-    required this.focusDomainId,
+    required this.focusCategoryId,
     required this.recordCount,
     required this.plans,
     required this.onOpenToday,
@@ -34,12 +34,12 @@ class LearnView extends StatelessWidget {
   final KnowledgeGraph graph;
   final AgeBand band;
   final LearnerState learner;
-  final String? focusDomainId;
+  final String? focusCategoryId;
   final int recordCount;
   final List<StudyPlan> plans;
 
   /// 点今日一步。
-  final void Function(Concept concept, LearningDomain domain) onOpenToday;
+  final void Function(Concept concept, ScholarCategory category) onOpenToday;
 
   /// 点下一条计划，直接进入学习。
   final void Function(StudyPlan plan) onOpenPlan;
@@ -66,9 +66,9 @@ class LearnView extends StatelessWidget {
     final concept = graph.nextStep(
       band,
       learner.readyIds,
-      focusDomainId: focusDomainId,
+      focusCategoryId: focusCategoryId,
     );
-    final domain = concept == null ? null : graph.domainById(concept.domainId);
+    final category = concept == null ? null : graph.categoryById(concept.categoryId);
     final nextPlan = _nextPlan;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -80,13 +80,13 @@ class LearnView extends StatelessWidget {
         const SizedBox(height: 18),
         const SectionHeader(title: '今日一步'),
         const SizedBox(height: 10),
-        if (concept != null && domain != null)
+        if (concept != null && category != null)
           TodayCard(
             band: band,
             concept: concept,
-            domain: domain,
+            category: category,
             tier: learner.tierOf(concept.id),
-            onTap: () => onOpenToday(concept, domain),
+            onTap: () => onOpenToday(concept, category),
           )
         else
           EmptyState(

@@ -14,7 +14,7 @@ export interface DegreeDto {
 
 export interface CategoryDto {
   id: string;
-  /// 父分类 id；为空表示九大基类，非空表示子类型（可嵌套）。
+  /// 父分类 id；为空表示顶级分类，非空表示子类（可嵌套）。
   parentId?: string | null;
   name: string;
   question: string;
@@ -22,6 +22,8 @@ export interface CategoryDto {
   modern: string;
   glyph: string;
   color: string;
+  /// 直接挂在这个分类下的知识，从浅到深。
+  concepts: ConceptDto[];
 }
 
 /// 知识点下的章节：最基础的知识单元。
@@ -53,15 +55,6 @@ export interface ConceptDto {
   variants: Record<string, VariantDto>;
 }
 
-export interface DomainDto {
-  id: string;
-  name: string;
-  glyph: string;
-  color: string;
-  categoryId: string;
-  concepts: ConceptDto[];
-}
-
 /// 知识库整包里的创建者：概念 id / 知识点键 → 智者名。
 export interface SageCredits {
   knowledge: Record<string, string>;
@@ -71,8 +64,8 @@ export interface SageCredits {
 export interface KnowledgeBundle {
   ageBands: AgeBandDto[];
   degrees: DegreeDto[];
+  /// 分类树（父类/子类，可嵌套），知识直接挂在分类上。
   categories: CategoryDto[];
-  domains: DomainDto[];
   /// 通过审批的贡献对应的创建者名；空对象表示还没有贡献。
   sageCredits?: SageCredits;
 }

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../archive/archive_store.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
-import '../knowledge/domain.dart';
+import '../knowledge/taxonomy.dart';
 import '../learning/learner_state.dart';
 import 'theme.dart';
 import 'widgets/empty_state.dart';
@@ -15,15 +15,15 @@ class ReviewPage extends StatefulWidget {
     super.key,
     required this.archive,
     required this.band,
-    required this.domain,
+    required this.category,
     this.maxDepth,
   });
 
   final ArchiveStore archive;
   final AgeBand band;
-  final LearningDomain domain;
+  final ScholarCategory category;
 
-  /// 计划只覆盖到这一层；null 表示整个领域。
+  /// 计划只覆盖到这一层；null 表示整个分类。
   final int? maxDepth;
 
   @override
@@ -64,7 +64,7 @@ class _ReviewPageState extends State<ReviewPage> {
     if (learner == null) {
       return const [];
     }
-    return widget.domain
+    return widget.category
         .conceptsFor(widget.band)
         .where((concept) =>
             (widget.maxDepth == null || concept.depth <= widget.maxDepth!) &&
@@ -88,10 +88,10 @@ class _ReviewPageState extends State<ReviewPage> {
     setState(() => _submitting = true);
     for (final concept in _learned) {
       await widget.archive.addPractice(
-        subject: widget.domain.displayNameFor(widget.band),
+        subject: widget.category.displayNameFor(widget.band),
         body: '完成小测：${concept.variantFor(widget.band).topic}',
         conceptId: concept.id,
-        domainId: widget.domain.id,
+        categoryId: widget.category.id,
         ageBandId: widget.band.id,
       );
     }
@@ -124,7 +124,7 @@ class _ReviewPageState extends State<ReviewPage> {
                     EmptyState(
                       icon: Icons.edit_note_outlined,
                       title: '还没有练过的步骤',
-                      message: '先在这个领域里学完至少一步，再回来小测。',
+                      message: '先在这个分类里学完至少一步，再回来小测。',
                       actionLabel: '回去继续学',
                       onAction: () => Navigator.of(context).pop(false),
                     )

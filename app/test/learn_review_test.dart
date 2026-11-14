@@ -29,14 +29,14 @@ void main() {
           subject: '语',
           body: '说一句带「日」的话',
           conceptId: 'zi_ri',
-          domainId: 'language',
+          categoryId: 'language',
           ageBandId: 'lower_primary',
         ),
       ],
       plans: [
         StudyPlan(
           id: 'p1',
-          domainId: 'language',
+          categoryId: 'language',
           depth: PlanDepth.deep,
           conceptId: 'zi_ri',
           degree: testDegree('beginner'),
@@ -45,7 +45,7 @@ void main() {
         ),
         StudyPlan(
           id: 'p2',
-          domainId: 'language',
+          categoryId: 'language',
           depth: PlanDepth.deep,
           conceptId: 'read_notice',
           degree: testDegree('familiar'),
@@ -80,7 +80,7 @@ void main() {
       plans: [
         StudyPlan(
           id: 'p1',
-          domainId: 'language',
+          categoryId: 'language',
           depth: PlanDepth.deep,
           conceptId: 'zi_ri',
           degree: testDegree('beginner'),
@@ -128,14 +128,14 @@ void main() {
           subject: '语',
           body: '说一句带「日」的话',
           conceptId: 'zi_ri',
-          domainId: 'language',
+          categoryId: 'language',
           ageBandId: 'lower_primary',
         ),
       ],
     );
     addTearDown(study.dispose);
 
-    final domain = study.repository.catalog.graph.domainById('language')!;
+    final category = study.repository.catalog.graph.categoryById('language')!;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -150,7 +150,7 @@ void main() {
                     builder: (_) => ReviewPage(
                       archive: study.archiveStore,
                       band: testBand('lower_primary'),
-                      domain: domain,
+                      category: category,
                     ),
                   ),
                 ),

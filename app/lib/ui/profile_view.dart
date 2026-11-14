@@ -312,22 +312,22 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  Widget _standingCard(BuildContext context, DomainStanding standing) {
+  Widget _standingCard(BuildContext context, CategoryStanding standing) {
     final text = Theme.of(context).textTheme;
-    final domain = standing.domain;
+    final category = standing.category;
     final level = standing.level;
     return PaperCard(
-      key: Key('standing_${domain.id}'),
+      key: Key('standing_${category.id}'),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Row(
         children: [
-          GlyphBadge(glyph: domain.glyph, color: domain.color, size: 44, fontSize: 20),
+          GlyphBadge(glyph: category.glyph, color: category.color, size: 44, fontSize: 20),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(domain.displayNameFor(widget.band), style: text.titleMedium),
+                Text(category.displayNameFor(widget.band), style: text.titleMedium),
                 const SizedBox(height: 4),
                 Text('熟练 ${standing.ready}/${standing.total} · 掌握 ${standing.mastered} 个', style: text.bodySmall),
                 const SizedBox(height: 8),
@@ -337,7 +337,7 @@ class _ProfileViewState extends State<ProfileView> {
                     value: standing.total == 0 ? 0 : standing.ready / standing.total,
                     minHeight: 4,
                     backgroundColor: paperLine,
-                    valueColor: AlwaysStoppedAnimation<Color>(domain.color),
+                    valueColor: AlwaysStoppedAnimation<Color>(category.color),
                   ),
                 ),
               ],

@@ -1,5 +1,4 @@
 import 'age_band.dart';
-import 'domain.dart';
 import 'knowledge_graph.dart';
 import 'sage_credit.dart';
 import 'study_degree.dart';
@@ -13,7 +12,6 @@ class KnowledgeCatalog {
     required this.ageBands,
     required this.degrees,
     required this.categories,
-    required this.domains,
     required this.graph,
     required this.sageCredits,
   });
@@ -35,7 +33,6 @@ class KnowledgeCatalog {
   final List<AgeBand> ageBands;
   final List<StudyDegree> degrees;
   final List<ScholarCategory> categories;
-  final List<LearningDomain> domains;
   final KnowledgeGraph graph;
 
   /// 通过审批的贡献对应的创建者名；空对象表示还没有贡献。
@@ -51,30 +48,20 @@ class KnowledgeCatalog {
       for (final item in _maps(json['degrees']))
         StudyDegree.fromJson(item),
     ];
+    final bandById = {for (final band in ageBands) band.id: band};
     final categories = <ScholarCategory>[
       for (final item in _maps(json['categories']))
-        ScholarCategory.fromJson(item),
+        ScholarCategory.fromJson(item, ageBands: bandById),
     ];
     if (ageBands.isEmpty || degrees.isEmpty || categories.isEmpty) {
       throw const FormatException('知识库缺少年龄段、程度或分类');
     }
 
-    final bandById = {for (final band in ageBands) band.id: band};
-    final domains = <LearningDomain>[
-      for (final item in _maps(json['domains']))
-        LearningDomain.fromJson(
-          item,
-          ageBands: bandById,
-          categories: categories,
-        ),
-    ];
-
     return KnowledgeCatalog._(
       ageBands: ageBands,
       degrees: degrees,
       categories: categories,
-      domains: domains,
-      graph: KnowledgeGraph(domains: domains, categories: categories),
+      graph: KnowledgeGraph(categories: categories),
       sageCredits: SageCredits.fromJson(
         json['sageCredits'] is Map
             ? Map<String, Object?>.from(json['sageCredits']! as Map)

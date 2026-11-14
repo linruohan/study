@@ -62,8 +62,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('你现在在哪一档'), findsNothing);
-    // 默认进入规划；切到「知识库」看这一档的知识卡片。
+    // 默认进入规划；切到「知识库」，进「语」子类看这一档的知识卡片。
     await tester.tap(find.byIcon(Icons.menu_book_outlined));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('category_card_language')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('knowledge_zi_ri')), findsOneWidget);
     // 6–8 岁同一概念换成「写一句话」，不重复幼儿的点认。

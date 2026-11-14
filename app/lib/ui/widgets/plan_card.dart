@@ -7,7 +7,7 @@ import '../../plan/study_plan.dart';
 import '../theme.dart';
 import 'glyph_badge.dart';
 
-/// 一条学习计划卡片：领域、方向、时间与状态，右侧可挂操作菜单。
+/// 一条学习计划卡片：分类、方向、时间与状态，右侧可挂操作菜单。
 ///
 /// 「规划」页的列表和「学习」页的下一条计划共用它，样式与状态色只此一份。
 class PlanCard extends StatelessWidget {
@@ -41,26 +41,26 @@ class PlanCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final domain = graph.domainById(plan.domainId);
-    final color = domain?.color ?? paperInkSoft;
+    final category = graph.categoryById(plan.categoryId);
+    final color = category?.color ?? paperInkSoft;
     final started = plan.due(now);
     final statusLabel = plan.done ? '已完成' : (started ? '可以开始' : '待开始');
     final statusColor = plan.done
         ? paperInkSoft
         : (started ? paperOchre : paperStone);
-    final name = domain == null
-        ? '这个领域暂时没有了'
-        : (domain.displayNameFor(band));
+    final name = category == null
+        ? '这个分类暂时没有了'
+        : (category.displayNameFor(band));
     final hasMenu = onToggleDone != null || onDelete != null;
     final timeLine = '${plan.depth.label} · ${planTimeLabel(plan.startAt, now: now)}'
         '${plan.remind && !plan.done ? ' · 到点提醒' : ''}';
     return PaperCard(
-      onTap: domain == null ? null : onTap,
+      onTap: category == null ? null : onTap,
       padding: EdgeInsets.fromLTRB(16, 14, hasMenu ? 4 : 16, 14),
       child: Row(
         children: [
           GlyphBadge(
-            glyph: domain?.glyph ?? '·',
+            glyph: category?.glyph ?? '·',
             color: color,
             size: 44,
             fontSize: 20,

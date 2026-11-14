@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../archive/archive_store.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
-import '../knowledge/domain.dart';
+import '../knowledge/taxonomy.dart';
 import '../knowledge/study_degree.dart';
 import '../learning/mastery.dart';
 import 'feedback.dart';
@@ -20,14 +20,14 @@ class DegreeLearningPage extends StatefulWidget {
     super.key,
     required this.archive,
     required this.band,
-    required this.domain,
+    required this.category,
     required this.concept,
     required this.degree,
   });
 
   final ArchiveStore archive;
   final AgeBand band;
-  final LearningDomain domain;
+  final ScholarCategory category;
   final Concept concept;
 
   /// 加入计划时选定的学习程度。
@@ -88,10 +88,10 @@ class _DegreeLearningPageState extends State<DegreeLearningPage> {
     }
     setState(() => _saving = true);
     final saved = await widget.archive.addPractice(
-      subject: widget.domain.displayNameFor(widget.band),
+      subject: widget.category.displayNameFor(widget.band),
       body: pointBody(_points[index]),
       conceptId: widget.concept.id,
-      domainId: widget.domain.id,
+      categoryId: widget.category.id,
       ageBandId: widget.band.id,
     );
     if (!mounted) {
@@ -131,8 +131,8 @@ class _DegreeLearningPageState extends State<DegreeLearningPage> {
               child: Row(
                 children: [
                   GlyphBadge(
-                    glyph: _variant.glyph ?? widget.domain.glyph,
-                    color: widget.domain.color,
+                    glyph: _variant.glyph ?? widget.category.glyph,
+                    color: widget.category.color,
                     size: 44,
                     rounded: true,
                     fontSize: 20,

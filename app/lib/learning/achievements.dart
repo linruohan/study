@@ -1,7 +1,7 @@
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
-import '../knowledge/domain.dart';
 import '../knowledge/knowledge_graph.dart';
+import '../knowledge/taxonomy.dart';
 import '../plan/study_plan.dart';
 import 'learner_state.dart';
 import 'mastery.dart';
@@ -46,18 +46,18 @@ enum StudyLevel {
   final String label;
 }
 
-/// 一个领域在当前档位的等级与进度。
-class DomainStanding {
-  const DomainStanding({
-    required this.domain,
+/// 一个分类在当前档位的等级与进度。
+class CategoryStanding {
+  const CategoryStanding({
+    required this.category,
     required this.level,
     required this.ready,
     required this.total,
     required this.mastered,
   });
 
-  /// 对应的领域。
-  final LearningDomain domain;
+  /// 对应的分类。
+  final ScholarCategory category;
 
   /// 当前等级；还没把任何一格练到熟练时为 null。
   final StudyLevel? level;
@@ -72,23 +72,23 @@ class DomainStanding {
   final int mastered;
 }
 
-/// 计算当前档位下每个领域的等级，用于「我的」页。
-List<DomainStanding> buildStandings({
+/// 计算当前档位下每个分类的等级，用于「我的」页。
+List<CategoryStanding> buildStandings({
   required KnowledgeGraph graph,
   required AgeBand band,
   required LearnerState learner,
 }) {
   final readyIds = learner.readyIds;
-  final list = <DomainStanding>[];
-  for (final domain in graph.domainsFor(band)) {
-    final concepts = domain.conceptsFor(band);
+  final list = <CategoryStanding>[];
+  for (final category in graph.categoriesWithContent(band)) {
+    final concepts = category.conceptsFor(band);
     final ready = concepts.where((concept) => readyIds.contains(concept.id)).length;
     final mastered = concepts
         .where((concept) => learner.tierOf(concept.id) == MasteryTier.mastered)
         .length;
     list.add(
-      DomainStanding(
-        domain: domain,
+      CategoryStanding(
+        category: category,
         level: _levelOf(concepts, learner),
         ready: ready,
         total: concepts.length,
@@ -100,7 +100,7 @@ List<DomainStanding> buildStandings({
 }
 
 /// 等级规则：已练到熟练的最深一格映射到小学/初中/高中/大学；
-/// 整个领域都到掌握时是专家级。
+/// 整个分类都到掌握时是专家级。
 StudyLevel? _levelOf(List<Concept> concepts, LearnerState learner) {
   if (concepts.isEmpty) {
     return null;
@@ -136,26 +136,26 @@ List<Achievement> buildAchievements({
   required LearnerState learner,
   required List<StudyPlan> plans,
 }) {
-  final domains = graph.domainsFor(band);
+  final categories = graph.categoriesWithContent(band);
   final readyIds = learner.readyIds;
   final practiced = learner.counts.values.where((count) => count > 0).length;
   final familiar = learner.counts.values.any(
     (count) => tierFromCount(count) != MasteryTier.attempt,
   );
-  final readyDomains = domains
-      .where((domain) =>
-          domain.conceptsFor(band).any((concept) => readyIds.contains(concept.id)))
+  final readyCategories = categories
+      .where((category) =>
+          category.conceptsFor(band).any((concept) => readyIds.contains(concept.id)))
       .length;
-  final fullReadyDomain = domains.any((domain) {
-    final concepts = domain.conceptsFor(band);
+  final fullReadyCategory = categories.any((category) {
+    final concepts = category.conceptsFor(band);
     return concepts.isNotEmpty &&
         concepts.every((concept) => readyIds.contains(concept.id));
   });
   final mastered = learner.counts.values.any(
     (count) => tierFromCount(count) == MasteryTier.mastered,
   );
-  final fullMasteredDomain = domains.any((domain) {
-    final concepts = domain.conceptsFor(band);
+  final fullMasteredCategory = categories.any((category) {
+    final concepts = category.conceptsFor(band);
     return concepts.isNotEmpty &&
         concepts.every(
           (concept) => learner.tierOf(concept.id) == MasteryTier.mastered,
@@ -182,11 +182,11 @@ List<Achievement> buildAchievements({
       progress: familiar ? '有一格已经熟了' : '同一格再练一次',
     ),
     Achievement(
-      id: 'three_domains',
+      id: 'three_categories',
       title: '三科点亮',
-      condition: '三个领域各有一格到熟练',
-      earned: readyDomains >= 3 && domains.length >= 3,
-      progress: '$readyDomains/${domains.length} 个领域',
+      condition: '三个分类各有一格到熟练',
+      earned: readyCategories >= 3 && categories.length >= 3,
+      progress: '$readyCategories/${categories.length} 个分类',
     ),
     Achievement(
       id: 'brief_done',
@@ -203,11 +203,11 @@ List<Achievement> buildAchievements({
       progress: deepDone ? '已完成' : '深入学习并通过小测',
     ),
     Achievement(
-      id: 'domain_ready',
+      id: 'category_ready',
       title: '一门通',
-      condition: '某个领域本档全部到熟练',
-      earned: fullReadyDomain,
-      progress: fullReadyDomain ? '已达成' : '还差几格',
+      condition: '某个分类本档全部到熟练',
+      earned: fullReadyCategory,
+      progress: fullReadyCategory ? '已达成' : '还差几格',
     ),
     Achievement(
       id: 'mastered',
@@ -219,9 +219,9 @@ List<Achievement> buildAchievements({
     Achievement(
       id: 'expert',
       title: '专家级',
-      condition: '某个领域本档全部到掌握',
-      earned: fullMasteredDomain,
-      progress: fullMasteredDomain ? '已达成' : '全部格数练到掌握',
+      condition: '某个分类本档全部到掌握',
+      earned: fullMasteredCategory,
+      progress: fullMasteredCategory ? '已达成' : '全部格数练到掌握',
     ),
   ];
 }

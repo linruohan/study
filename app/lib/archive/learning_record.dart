@@ -6,7 +6,7 @@ class LearningRecord {
     required this.subject,
     required this.body,
     this.conceptId,
-    this.domainId,
+    this.categoryId,
     this.ageBandId,
   });
 
@@ -19,8 +19,8 @@ class LearningRecord {
   /// 这一步对应的概念 id；旧档案没有这一项，读回时为 null。
   final String? conceptId;
 
-  /// 这一步所属领域 id，用于按领域回看。
-  final String? domainId;
+  /// 这一步所属分类 id，用于按分类回看。
+  final String? categoryId;
 
   /// 这一步是在哪个年龄档做的，便于换档后仍能追溯。
   final String? ageBandId;
@@ -33,7 +33,7 @@ class LearningRecord {
       'subject': subject,
       'body': body,
       if (conceptId != null) 'conceptId': conceptId,
-      if (domainId != null) 'domainId': domainId,
+      if (categoryId != null) 'categoryId': categoryId,
       if (ageBandId != null) 'ageBandId': ageBandId,
     };
   }
@@ -46,7 +46,8 @@ class LearningRecord {
       subject: json['subject']! as String,
       body: json['body']! as String,
       conceptId: json['conceptId'] as String?,
-      domainId: json['domainId'] as String?,
+      // 旧数据里的键叫 domainId。
+      categoryId: (json['categoryId'] ?? json['domainId']) as String?,
       ageBandId: json['ageBandId'] as String?,
     );
   }

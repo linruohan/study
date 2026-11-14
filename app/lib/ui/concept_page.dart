@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../archive/archive_store.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
-import '../knowledge/domain.dart';
+import '../knowledge/taxonomy.dart';
 import '../learning/learner_state.dart';
 import '../learning/mastery.dart';
 import 'theme.dart';
@@ -16,13 +16,13 @@ class ConceptPage extends StatefulWidget {
     super.key,
     required this.archive,
     required this.band,
-    required this.domain,
+    required this.category,
     required this.concept,
   });
 
   final ArchiveStore archive;
   final AgeBand band;
-  final LearningDomain domain;
+  final ScholarCategory category;
   final Concept concept;
 
   @override
@@ -43,10 +43,10 @@ class _ConceptPageState extends State<ConceptPage> {
     }
     setState(() => _saving = true);
     final saved = await widget.archive.addPractice(
-      subject: widget.domain.displayNameFor(widget.band),
+      subject: widget.category.displayNameFor(widget.band),
       body: _variant.doing,
       conceptId: widget.concept.id,
-      domainId: widget.domain.id,
+      categoryId: widget.category.id,
       ageBandId: widget.band.id,
     );
     if (!mounted) {
@@ -65,7 +65,7 @@ class _ConceptPageState extends State<ConceptPage> {
     final text = Theme.of(context).textTheme;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.domain.displayNameFor(widget.band)),
+        title: Text(widget.category.displayNameFor(widget.band)),
       ),
       body: SafeArea(
         child: ListView(
@@ -89,12 +89,12 @@ class _ConceptPageState extends State<ConceptPage> {
                   height: 208,
                   decoration: BoxDecoration(
                     color: _done
-                        ? widget.domain.color.withValues(alpha: 0.8)
-                        : widget.domain.color,
+                        ? widget.category.color.withValues(alpha: 0.8)
+                        : widget.category.color,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: widget.domain.color.withValues(alpha: 0.22),
+                        color: widget.category.color.withValues(alpha: 0.22),
                         blurRadius: 22,
                         offset: const Offset(0, 10),
                       ),
@@ -102,7 +102,7 @@ class _ConceptPageState extends State<ConceptPage> {
                   ),
                   child: Center(
                     child: Text(
-                      _variant.glyph ?? widget.domain.glyph,
+                      _variant.glyph ?? widget.category.glyph,
                       style: const TextStyle(
                         fontSize: 76,
                         height: 1.1,

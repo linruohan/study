@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../knowledge/age_band.dart';
-import '../../knowledge/domain.dart';
 import '../../knowledge/knowledge_graph.dart';
+import '../../knowledge/taxonomy.dart';
 import '../../plan/plan_book.dart';
 import '../../plan/study_plan.dart';
 
@@ -26,7 +26,7 @@ class PlanReminder extends StatefulWidget {
   final AgeBand band;
 
   /// 选「现在开始」后交给首页去导航。
-  final void Function(StudyPlan plan, LearningDomain domain) onStart;
+  final void Function(StudyPlan plan, ScholarCategory category) onStart;
 
   final Widget child;
 
@@ -77,14 +77,14 @@ class _PlanReminderState extends State<PlanReminder> {
     if (due == null) {
       return;
     }
-    final domain = widget.graph.domainById(due.domainId);
+    final category = widget.graph.categoryById(due.categoryId);
     _open = true;
     final choice = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('计划到时间了'),
         content: Text(
-          '${domain?.displayNameFor(widget.band) ?? '学习'} · ${due.depth.label}\n现在开始吗？',
+          '${category?.displayNameFor(widget.band) ?? '学习'} · ${due.depth.label}\n现在开始吗？',
         ),
         actions: [
           TextButton(
@@ -104,8 +104,8 @@ class _PlanReminderState extends State<PlanReminder> {
     }
     if (choice == 'start') {
       await widget.book.markReminded(due, now);
-      if (mounted && domain != null) {
-        widget.onStart(due, domain);
+      if (mounted && category != null) {
+        widget.onStart(due, category);
       }
       return;
     }

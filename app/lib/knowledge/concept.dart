@@ -51,7 +51,7 @@ class ConceptVariant {
   /// 提问之后的参考回应，可自行对照。
   final String answer;
 
-  /// 大图上的字或符号；留空时用领域图标。
+  /// 大图上的字或符号；留空时用分类图标。
   final String? glyph;
 
   /// 给本人或监护人的一句说明，可空。
@@ -142,7 +142,7 @@ class ConceptVariant {
 class Concept {
   const Concept({
     required this.id,
-    required this.domainId,
+    required this.categoryId,
     required this.depth,
     required this.variants,
     this.prerequisites = const [],
@@ -151,10 +151,10 @@ class Concept {
   /// 稳定标识，写进档案和计划。
   final String id;
 
-  /// 所属领域，便于从领域阶梯进入。
-  final String domainId;
+  /// 所属分类（父类/子类树上的节点），便于从分类阶梯进入。
+  final String categoryId;
 
-  /// 领域内的深浅层级，0 最浅。
+  /// 分类内的深浅层级，0 最浅。
   final int depth;
 
   /// 同一概念在各年龄档的呈现；没有写入的档就不出现。
@@ -166,7 +166,7 @@ class Concept {
   /// 从知识库接口读取一个概念；未知年龄档的呈现直接跳过。
   factory Concept.fromJson(
     Map<String, Object?> json, {
-    required String domainId,
+    required String categoryId,
     required Map<String, AgeBand> ageBands,
   }) {
     final variants = <AgeBand, ConceptVariant>{};
@@ -195,7 +195,7 @@ class Concept {
 
     return Concept(
       id: json['id'] as String,
-      domainId: domainId,
+      categoryId: categoryId,
       depth: json['depth'] as int? ?? 0,
       variants: variants,
       prerequisites: prerequisites,

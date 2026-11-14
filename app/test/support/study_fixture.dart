@@ -44,7 +44,7 @@ class FakeStudyApi implements StudyApi {
       : knowledge = knowledge ?? loadKnowledgeJson(),
         userData = userData ??
             {
-              'profile': {'band': null, 'focusDomainId': null},
+              'profile': {'band': null, 'focusCategoryId': null},
               'plans': <Object?>[],
               'records': <Object?>[],
             };
@@ -181,30 +181,10 @@ class FakeStudyApi implements StudyApi {
     };
   }
 
-  /// 假的领域创建：回显入参，便于断言界面提交了什么。
-  @override
-  Future<Map<String, dynamic>> createDomain({
-    String? id,
-    required String categoryId,
-    required String name,
-    String glyph = '域',
-    String color = '#7A6A54',
-  }) async {
-    _ensureOnline();
-    return {
-      'id': id ?? 'fake_domain',
-      'categoryId': categoryId,
-      'name': name,
-      'glyph': glyph,
-      'color': color,
-      'concepts': const [],
-    };
-  }
-
   /// 假的知识创建：回显入参，便于断言界面提交了什么。
   @override
   Future<Map<String, dynamic>> createKnowledge({
-    required String domainId,
+    required String categoryId,
     required String ageBandId,
     required String topic,
     String? doing,
@@ -219,7 +199,7 @@ class FakeStudyApi implements StudyApi {
       'id': 'fake_knowledge',
       'depth': 0,
       'topic': topic,
-      'domainId': domainId,
+      'categoryId': categoryId,
       'ageBandId': ageBandId,
     };
   }
@@ -375,7 +355,7 @@ class TestStudy {
   /// 建一套测试数据；默认还没选年龄档。
   static Future<TestStudy> create({
     String? band,
-    String? focusDomainId,
+    String? focusCategoryId,
     List<StudyPlan> plans = const [],
     List<LearningRecord> records = const [],
     FakeStudyApi? api,
@@ -388,7 +368,7 @@ class TestStudy {
           userData: {
             'profile': {
               'band': band,
-              'focusDomainId': focusDomainId,
+              'focusCategoryId': focusCategoryId,
             },
             'plans': [for (final plan in plans) plan.toJson()],
             'records': [for (final record in records) record.toJson()],

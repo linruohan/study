@@ -1,7 +1,7 @@
 ﻿import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { HttpError } from '../http/errors.js';
-import { createCategory, createConcept, createDomain, addKnowledgePoint, loadKnowledgeBundle, updateCategory } from './knowledge.repository.js';
+import { createCategory, createConcept, addKnowledgePoint, loadKnowledgeBundle, updateCategory } from './knowledge.repository.js';
 
 const createCategorySchema = z.object({
   id: z.string().trim().min(1).max(64),
@@ -20,18 +20,9 @@ const updateCategorySchema = z.object({
   question: z.string().trim().max(200).optional().default(''),
 });
 
-/// 新建领域：id 可省略，由服务端生成。
-const createDomainSchema = z.object({
-  id: z.string().trim().min(1).max(64).optional(),
-  categoryId: z.string().trim().min(1).max(64),
-  name: z.string().trim().min(1).max(60),
-  glyph: z.string().trim().max(8).optional().default('域'),
-  color: z.string().trim().regex(/^#[0-9A-Fa-f]{6}$/).optional().default('#7A6A54'),
-});
-
 /// 新建知识：一条概念 + 本年龄档呈现 + 三档默认知识点。
 const createConceptSchema = z.object({
-  domainId: z.string().trim().min(1).max(64),
+  categoryId: z.string().trim().min(1).max(64),
   ageBandId: z.string().trim().min(1).max(64),
   topic: z.string().trim().min(1).max(200),
   doing: z.string().trim().max(500).optional(),
@@ -50,7 +41,7 @@ const createPointSchema = z.object({
   point: z.string().trim().min(1).max(500),
 });
 
-/// 知识库接口：返回全部内容；支持在九大基类下创建可嵌套子类型、学习领域、知识与知识点。
+/// 知识库接口：返回全部内容；支持创建可嵌套子类（父类/子类）与把知识直接挂到分类下。
 export async function knowledgeRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/knowledge', async (_request, reply) => {
     const bundle = await loadKnowledgeBundle();
@@ -97,27 +88,6 @@ export async function knowledgeRoutes(app: FastifyInstance): Promise<void> {
     } catch (error) {
       if ((error as { statusCode?: number }).statusCode === 404) {
         throw new HttpError(404, 'not_found', '分类不存在');
-      }
-      throw error;
-    }
-  });
-
-  app.post('/api/knowledge/domains', async (request) => {
-    const parsed = createDomainSchema.safeParse(request.body);
-    if (!parsed.success) {
-      const issue = parsed.error.issues[0];
-      throw new HttpError(400, 'invalid_request', issue ? `${issue.path.join('.') || 'body'}: ${issue.message}` : '请求参数不对');
-    }
-    try {
-      const domain = await createDomain(parsed.data);
-      return { domain };
-    } catch (error) {
-      const e = error as { statusCode?: number; code?: string };
-      if (e.statusCode === 404) {
-        throw new HttpError(404, 'not_found', '所属分类不存在');
-      }
-      if (e.statusCode === 409 || e.code === '23505') {
-        throw new HttpError(409, 'conflict', '领域 id 已存在');
       }
       throw error;
     }

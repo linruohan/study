@@ -41,7 +41,7 @@ class ArchiveStore {
     required String body,
     DateTime? at,
     String? conceptId,
-    String? domainId,
+    String? categoryId,
     String? ageBandId,
   }) {
     return addRecord(
@@ -50,7 +50,7 @@ class ArchiveStore {
       body: body,
       at: at,
       conceptId: conceptId,
-      domainId: domainId,
+      categoryId: categoryId,
       ageBandId: ageBandId,
     );
   }
@@ -75,7 +75,7 @@ class ArchiveStore {
     required String body,
     DateTime? at,
     String? conceptId,
-    String? domainId,
+    String? categoryId,
     String? ageBandId,
   }) async {
     final now = at ?? DateTime.now();
@@ -86,7 +86,7 @@ class ArchiveStore {
       subject: subject,
       body: body,
       conceptId: conceptId,
-      domainId: domainId,
+      categoryId: categoryId,
       ageBandId: ageBandId,
     );
     final next = _repository.archive.add(record);

@@ -6,7 +6,6 @@ import '../data/study_repository.dart';
 import '../guardian/guardian_page.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
-import '../knowledge/domain.dart';
 import '../knowledge/knowledge_catalog.dart';
 import '../knowledge/knowledge_graph.dart';
 import '../knowledge/taxonomy.dart';
@@ -18,12 +17,11 @@ import '../plan/study_plan.dart';
 import '../profile/profile_store.dart';
 import '../profile/study_profile.dart';
 import 'age_setup_page.dart';
-import 'add_domain_dialog.dart';
 import 'add_knowledge_dialog.dart';
 import 'add_subtype_dialog.dart';
+import 'category_page.dart';
 import 'edit_category_dialog.dart';
 import 'concept_page.dart';
-import 'domain_page.dart';
 import 'feedback.dart';
 import 'knowledge_detail_page.dart';
 import 'learn_view.dart';
@@ -41,7 +39,7 @@ import 'widgets/plan_reminder.dart';
 
 /// 首页：规划、知识库、学习、我的四个入口。
 ///
-/// 规划管什么时候学什么；知识库按程度和领域看全部知识；
+/// 规划管什么时候学什么；知识库按程度和分类看全部知识；
 /// 学习只放今日一步和下一条计划；我的放等级、徽章和设置。
 class HomePage extends StatefulWidget {
   const HomePage({
@@ -72,7 +70,7 @@ class _HomePageState extends State<HomePage> {
   var _recordCount = 0;
   var _tab = 0;
 
-  /// 知识库停在树的哪个节点（类 id 或领域 id），返回后保持不动。
+  /// 知识库停在树的哪个分类节点上，返回后保持不动。
   String? _librarySelection;
 
   /// 知识库当前展开的类 id。
@@ -80,7 +78,7 @@ class _HomePageState extends State<HomePage> {
   /// 左侧树是手风琴模式：同一时间只展开一条分支，点开新分支会收起其他分支。
   Set<String> _libraryExpanded = <String>{};
 
-  /// 当前知识图谱；在知识库添加领域/知识后换成刷新后的版本。
+  /// 当前知识图谱；在知识库添加子类/知识后换成刷新后的版本。
   late KnowledgeGraph _graph = widget.graph;
 
   String? _exportPath;
@@ -137,38 +135,6 @@ class _HomePageState extends State<HomePage> {
     } catch (error) {
       return '$error';
     }
-  }
-
-  /// 知识库「+ 领域」：弹窗创建后刷新目录，并选中新领域、展开所属分类。
-  Future<void> _addDomain(ScholarCategory category) async {
-    final createdId = await showDialog<String>(
-      context: context,
-      builder: (_) => AddDomainDialog(
-        repository: widget.repository,
-        category: category,
-      ),
-    );
-    if (createdId == null || !mounted) {
-      return;
-    }
-    final refreshError = await _refreshKnowledge();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _librarySelection = createdId;
-      // 手风琴：只保留新领域所在的那一条展开链。
-      _libraryExpanded = {..._ancestorIds(category), category.id};
-    });
-    if (refreshError != null) {
-      await showFailureDialog(
-        context,
-        title: '领域已添加，但目录刷新失败',
-        reason: '$refreshError\n\n重启应用后即可看到新领域。',
-      );
-      return;
-    }
-    showSuccessToast(context, '领域已添加');
   }
 
   /// 某个分类的祖先 id 集合，用来展开左侧树。
@@ -234,6 +200,7 @@ class _HomePageState extends State<HomePage> {
       builder: (_) => AddSubtypeDialog(
         repository: widget.repository,
         parent: parent,
+        graph: _graph,
       ),
     );
     if (createdId == null || !mounted) {
@@ -243,10 +210,14 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) {
       return;
     }
+    // 弹窗里可以改父类，所以按回读到的真实父链展开，而不是按打开时的分类。
+    final created = _graph.categoryById(createdId);
     setState(() {
       _librarySelection = createdId;
       // 手风琴：只保留新子类所在的那一条展开链。
-      _libraryExpanded = {..._ancestorIds(parent), parent.id};
+      _libraryExpanded = created != null
+          ? _ancestorIds(created)
+          : {..._ancestorIds(parent), parent.id};
     });
     if (refreshError != null) {
       await showFailureDialog(
@@ -261,11 +232,14 @@ class _HomePageState extends State<HomePage> {
 
   /// 知识库「铅笔」：修改当前分类的名称与描述，成功后重新拉取知识库。
   Future<void> _editCategory(ScholarCategory category) async {
+    final parentId = category.parentId;
     final updated = await showDialog<bool>(
       context: context,
       builder: (_) => EditCategoryDialog(
         repository: widget.repository,
         category: category,
+        parentName:
+            parentId == null ? null : _graph.categoryById(parentId)?.name,
       ),
     );
     if (updated != true || !mounted) {
@@ -292,10 +266,10 @@ class _HomePageState extends State<HomePage> {
     if (band == null) {
       return;
     }
-    // 包含新建但还没有知识的空领域，方便把第一条知识加进去。
-    final domains = _graph.domains;
-    if (domains.isEmpty) {
-      showInfoToast(context, '还没有领域，先点「领域」添加一个吧。');
+    // 包含新建但还没有知识的空子类，方便把第一条知识加进去。
+    final categories = _graph.categories;
+    if (categories.isEmpty) {
+      showInfoToast(context, '还没有分类，先添加一个子类吧。');
       return;
     }
     final created = await showDialog<bool>(
@@ -303,8 +277,8 @@ class _HomePageState extends State<HomePage> {
       builder: (_) => AddKnowledgeDialog(
         repository: widget.repository,
         band: band,
-        domains: domains,
-        initialDomain: _initialDomainIn(category, domains),
+        categories: categories,
+        initialCategory: _initialCategoryIn(category),
       ),
     );
     if (created != true || !mounted) {
@@ -325,20 +299,17 @@ class _HomePageState extends State<HomePage> {
     showSuccessToast(context, '知识已添加');
   }
 
-  /// 当前分类下优先选中的领域；没有取选中领域，再退回该分类子树里的第一个。
-  LearningDomain _initialDomainIn(
-    ScholarCategory category,
-    List<LearningDomain> domains,
-  ) {
+  /// 新知识默认落到的分类：优先当前选中/传入的分类，再退回其子树里的第一个。
+  ScholarCategory _initialCategoryIn(ScholarCategory category) {
     final selection = _librarySelection;
     if (selection != null) {
-      final selected = _graph.domainById(selection);
+      final selected = _graph.categoryById(selection);
       if (selected != null) {
         return selected;
       }
     }
-    final under = _graph.domainsUnderCategory(category);
-    return under.isNotEmpty ? under.first : domains.first;
+    final under = _graph.categoriesUnder(category);
+    return under.isNotEmpty ? under.first : category;
   }
 
   /// 汇总当前消息：系统欢迎 + 还没完成的计划提醒。
@@ -358,20 +329,20 @@ class _HomePageState extends State<HomePage> {
       if (plan.done) {
         continue;
       }
-      final domain = _graph.domainById(plan.domainId);
+      final category = _graph.categoryById(plan.categoryId);
       final concept =
           plan.conceptId == null ? null : _graph.conceptById(plan.conceptId!);
       final topic = concept != null && concept.availableIn(band)
           ? concept.variantFor(band).topic
           : null;
       final body = topic != null
-          ? '${domain?.displayNameFor(band) ?? '知识'} · $topic'
-          : '${domain?.displayNameFor(band) ?? '领域'} 的阶梯在等你，点开就能继续。';
+          ? '${category?.displayNameFor(band) ?? '知识'} · $topic'
+          : '${category?.displayNameFor(band) ?? '分类'} 的阶梯在等你，点开就能继续。';
       messages.add(
         AppMessage(
           id: 'plan_${plan.id}',
           kind: AppMessageKind.planReminder,
-          title: '计划到时间了 · ${plan.degree?.label ?? '领域学习'}',
+          title: '计划到时间了 · ${plan.degree?.label ?? '分类学习'}',
           body: body,
           createdAt: plan.startAt,
           // 计划提醒需要处理，消息末尾给一个直达规划页的按钮。
@@ -399,7 +370,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// 进入某一步学习；回来后重新读档案。
-  Future<void> _openConcept(Concept concept, LearningDomain domain) async {
+  Future<void> _openConcept(Concept concept, ScholarCategory category) async {
     final band = _profile.band;
     if (band == null) {
       return;
@@ -409,7 +380,7 @@ class _HomePageState extends State<HomePage> {
         builder: (_) => ConceptPage(
           archive: widget.archive,
           band: band,
-          domain: domain,
+          category: category,
           concept: concept,
         ),
       ),
@@ -418,7 +389,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// 打开一条知识的详情；在详情里按程度加入计划后写进计划簿。
-  Future<void> _openKnowledge(Concept concept, LearningDomain domain) async {
+  Future<void> _openKnowledge(Concept concept, ScholarCategory category) async {
     final band = _profile.band;
     final learner = _learner;
     if (band == null || learner == null) {
@@ -431,7 +402,7 @@ class _HomePageState extends State<HomePage> {
           repository: widget.repository,
           graph: _graph,
           band: band,
-          domain: domain,
+          category: category,
           concept: concept,
           learner: learner,
           plans: _book.plans,
@@ -506,13 +477,13 @@ class _HomePageState extends State<HomePage> {
     setState(() => _exportPath = file.path);
   }
 
-  /// 进入计划对应的领域阶梯；简单了解只看前两层。
-  Future<void> _openPlan(StudyPlan plan, LearningDomain domain) async {
+  /// 进入计划对应的分类阶梯；简单了解只看前两层。
+  Future<void> _openPlan(StudyPlan plan, ScholarCategory category) async {
     final band = _profile.band;
     if (band == null) {
       return;
     }
-    final next = _profile.withFocus(domain.id);
+    final next = _profile.withFocus(category.id);
     await widget.store.save(next);
     if (!mounted) {
       return;
@@ -520,13 +491,13 @@ class _HomePageState extends State<HomePage> {
     setState(() => _profile = next);
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => DomainPage(
+        builder: (_) => CategoryPage(
           archive: widget.archive,
           band: band,
-          domain: domain,
+          category: category,
           graph: _graph,
           maxDepth: plan.depth.maxDepth,
-          onFinish: () => _openReview(plan, domain),
+          onFinish: () => _openReview(plan, category),
         ),
       ),
     );
@@ -534,7 +505,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// 学完之后的小测；通过就再把计划标成完成，并回到首页。
-  Future<void> _openReview(StudyPlan plan, LearningDomain domain) async {
+  Future<void> _openReview(StudyPlan plan, ScholarCategory category) async {
     final band = _profile.band;
     if (band == null) {
       return;
@@ -544,7 +515,7 @@ class _HomePageState extends State<HomePage> {
         builder: (_) => ReviewPage(
           archive: widget.archive,
           band: band,
-          domain: domain,
+          category: category,
           maxDepth: plan.depth.maxDepth,
         ),
       ),
@@ -584,13 +555,13 @@ class _HomePageState extends State<HomePage> {
   /// 在规划页把一条没排进计划的知识按入门程度排进来。
   Future<void> _addConceptPlan(
     Concept concept,
-    LearningDomain domain,
+    ScholarCategory category,
   ) async {
     final now = DateTime.now();
     await _book.add(
       StudyPlan(
         id: 'plan_${now.microsecondsSinceEpoch}',
-        domainId: domain.id,
+        categoryId: category.id,
         depth: PlanDepth.deep,
         conceptId: concept.id,
         degree: KnowledgeCatalog.instance.degrees.first,
@@ -611,11 +582,8 @@ class _HomePageState extends State<HomePage> {
           expandedIds: _libraryExpanded,
           onSelectCategory: _selectLibraryCategory,
           onToggleExpand: _toggleLibraryExpanded,
-          onSelectDomain: (domain) =>
-              setState(() => _librarySelection = domain.id),
           onOpen: _openKnowledge,
           onAddSubtype: _addSubtype,
-          onAddDomain: _addDomain,
           onAddKnowledge: _addKnowledge,
           onEditCategory: _editCategory,
         ),
@@ -623,14 +591,14 @@ class _HomePageState extends State<HomePage> {
           graph: _graph,
           band: band,
           learner: learner,
-          focusDomainId: _profile.focusDomainId,
+          focusCategoryId: _profile.focusCategoryId,
           recordCount: _recordCount,
           plans: _book.plans,
           onOpenToday: _openConcept,
           onOpenPlan: (plan) {
-            final domain = _graph.domainById(plan.domainId);
-            if (domain != null) {
-              _openPlan(plan, domain);
+            final category = _graph.categoryById(plan.categoryId);
+            if (category != null) {
+              _openPlan(plan, category);
             }
           },
           onGoPlan: () => setState(() => _tab = 0),

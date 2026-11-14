@@ -19,10 +19,10 @@ void main() {
   });
 
   test('领域阶梯从浅到深排序，未满足前置的格锁定', () {
-    final domain = graph.domainById('language')!;
+    final category = graph.categoryById('language')!;
     final entries = buildLadder(
       graph: graph,
-      domain: domain,
+      category: category,
       band: testBand('upper_primary'),
       learner: LearnerState(const {}),
     );
@@ -36,11 +36,11 @@ void main() {
   });
 
   test('前置到了熟练，下一格才打开', () {
-    final domain = graph.domainById('language')!;
+    final category = graph.categoryById('language')!;
     final learner = LearnerState(const {'zi_ri': 4});
     final entries = buildLadder(
       graph: graph,
-      domain: domain,
+      category: category,
       band: testBand('upper_primary'),
       learner: learner,
     );
@@ -49,13 +49,13 @@ void main() {
     expect(entries[1].canOpen, isTrue);
   });
 
-  test('今日下一步跳过已熟练的，关注领域优先', () {
+  test('今日下一步跳过已熟练的，关注分类优先', () {
     expect(graph.nextStep(testBand('toddler'), const {})?.id, 'zi_ri');
     expect(
       graph.nextStep(
         testBand('toddler'),
         const {},
-        focusDomainId: 'life',
+        focusCategoryId: 'cat_life',
       )?.id,
       'fire_safety',
     );

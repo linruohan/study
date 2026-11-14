@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/study_repository.dart';
+import '../knowledge/knowledge_graph.dart';
 import '../knowledge/taxonomy.dart';
 import 'theme.dart';
 
@@ -31,12 +32,16 @@ class AddSubtypeDialog extends StatefulWidget {
     super.key,
     required this.repository,
     required this.parent,
+    required this.graph,
   });
 
   final StudyRepository repository;
 
-  /// 新子类型挂在哪个分类下。
+  /// 新子类型默认挂在哪个分类下（当前选中的分类）。
   final ScholarCategory parent;
+
+  /// 分类图谱：用来列出可选父类，嵌套层级用缩进展示。
+  final KnowledgeGraph graph;
 
   @override
   State<AddSubtypeDialog> createState() => _AddSubtypeDialogState();
@@ -50,6 +55,36 @@ class _AddSubtypeDialogState extends State<AddSubtypeDialog> {
   var _colorHex = _colorOptions.first.hex;
   var _saving = false;
   String? _error;
+
+  /// 父类 id：默认是当前分类，也可以在弹窗里改成其他分类。
+  late String _parentId = widget.parent.id;
+
+  /// 可选父类列表：按树的顺序拍平，用 depth 表示嵌套层级。
+  List<({ScholarCategory category, int depth})> _parentOptions() {
+    final options = <({ScholarCategory category, int depth})>[];
+    final visited = <String>{};
+
+    void walk(ScholarCategory category, int depth) {
+      if (!visited.add(category.id)) {
+        return;
+      }
+      options.add((category: category, depth: depth));
+      for (final child in widget.graph.childrenOf(category.id)) {
+        walk(child, depth + 1);
+      }
+    }
+
+    for (final root in widget.graph.rootCategories) {
+      walk(root, 0);
+    }
+    // 父级缺失的异常分类也要能选到，避免它们从下拉里消失。
+    for (final category in widget.graph.categories) {
+      if (!visited.contains(category.id)) {
+        walk(category, 0);
+      }
+    }
+    return options;
+  }
 
   @override
   void dispose() {
@@ -73,7 +108,7 @@ class _AddSubtypeDialogState extends State<AddSubtypeDialog> {
     try {
       final created = await widget.repository.createCategory(
         id: 'cat_${DateTime.now().microsecondsSinceEpoch}',
-        parentId: widget.parent.id,
+        parentId: _parentId,
         name: name,
         question: _questionController.text.trim(),
         glyph: _glyphController.text.trim().isEmpty
@@ -109,7 +144,33 @@ class _AddSubtypeDialogState extends State<AddSubtypeDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('父分类：${widget.parent.name}', style: text.bodySmall),
+              DropdownButtonFormField<String>(
+                key: const Key('add_subtype_parent'),
+                initialValue: _parentId,
+                decoration: const InputDecoration(
+                  labelText: '父类',
+                  helperText: '子类型会挂在选中的父类下面',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: [
+                  for (final option in _parentOptions())
+                    DropdownMenuItem(
+                      value: option.category.id,
+                      // 全角空格缩进，让嵌套层级一眼能看出来。
+                      child: Text(
+                        '${'　' * option.depth}${option.category.name}',
+                      ),
+                    ),
+                ],
+                onChanged: _saving
+                    ? null
+                    : (value) {
+                        if (value != null) {
+                          setState(() => _parentId = value);
+                        }
+                      },
+              ),
               const SizedBox(height: 12),
               TextField(
                 key: const Key('add_subtype_name'),

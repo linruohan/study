@@ -1,7 +1,7 @@
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
-import '../knowledge/domain.dart';
 import '../knowledge/knowledge_graph.dart';
+import '../knowledge/taxonomy.dart';
 import 'learner_state.dart';
 import 'mastery.dart';
 
@@ -42,16 +42,16 @@ class LadderEntry {
   bool get canOpen => status != LadderStatus.locked;
 }
 
-/// 生成某一领域在当前年龄档的阶梯：从浅到深，并标出每格状态。
+/// 生成某一分类在当前年龄档的阶梯：从浅到深，并标出每格状态。
 List<LadderEntry> buildLadder({
   required KnowledgeGraph graph,
-  required LearningDomain domain,
+  required ScholarCategory category,
   required AgeBand band,
   required LearnerState learner,
 }) {
   final ready = learner.readyIds;
   final entries = <LadderEntry>[];
-  for (final concept in domain.conceptsFor(band)) {
+  for (final concept in category.conceptsFor(band)) {
     final tier = learner.tierOf(concept.id);
     entries.add(
       LadderEntry(

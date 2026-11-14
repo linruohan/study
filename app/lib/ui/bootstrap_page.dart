@@ -85,7 +85,7 @@ class _StartPageState extends State<StartPage> {
         catalog: current.catalog,
         profile: StudyProfile(
           band: band,
-          focusDomainId: current.profile.focusDomainId,
+          focusCategoryId: current.profile.focusCategoryId,
         ),
         plans: current.plans,
         archive: current.archive,

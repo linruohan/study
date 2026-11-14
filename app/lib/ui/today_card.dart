@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
-import '../knowledge/domain.dart';
+import '../knowledge/taxonomy.dart';
 import '../learning/mastery.dart';
 import 'theme.dart';
 
@@ -12,14 +12,14 @@ class TodayCard extends StatelessWidget {
     super.key,
     required this.band,
     required this.concept,
-    required this.domain,
+    required this.category,
     required this.tier,
     required this.onTap,
   });
 
   final AgeBand band;
   final Concept concept;
-  final LearningDomain domain;
+  final ScholarCategory category;
 
   /// 这一步当前的档位；没练过为 null。
   final MasteryTier? tier;
@@ -39,7 +39,7 @@ class TodayCard extends StatelessWidget {
           Row(
             children: [
               Text(
-                domain.displayNameFor(band),
+                category.displayNameFor(band),
                 style: text.bodySmall,
               ),
               const Spacer(),
@@ -55,11 +55,11 @@ class TodayCard extends StatelessWidget {
               width: 152,
               height: 152,
               decoration: BoxDecoration(
-                color: domain.color,
+                color: category.color,
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: domain.color.withValues(alpha: 0.22),
+                    color: category.color.withValues(alpha: 0.22),
                     blurRadius: 18,
                     offset: const Offset(0, 8),
                   ),
@@ -67,7 +67,7 @@ class TodayCard extends StatelessWidget {
               ),
               child: Center(
                 child: Text(
-                  variant.glyph ?? domain.glyph,
+                  variant.glyph ?? category.glyph,
                   style: const TextStyle(
                     fontSize: 58,
                     height: 1.1,

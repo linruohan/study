@@ -4,7 +4,7 @@ import '../archive/archive_store.dart';
 import '../data/study_repository.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
-import '../knowledge/domain.dart';
+import '../knowledge/taxonomy.dart';
 import '../knowledge/knowledge_catalog.dart';
 import '../knowledge/knowledge_graph.dart';
 import '../knowledge/study_degree.dart';
@@ -22,7 +22,7 @@ class KnowledgeDetailPage extends StatefulWidget {
     required this.repository,
     required this.graph,
     required this.band,
-    required this.domain,
+    required this.category,
     required this.concept,
     required this.learner,
     required this.plans,
@@ -33,7 +33,7 @@ class KnowledgeDetailPage extends StatefulWidget {
   final StudyRepository repository;
   final KnowledgeGraph graph;
   final AgeBand band;
-  final LearningDomain domain;
+  final ScholarCategory category;
   final Concept concept;
 
   /// 进入时的学习者状态。
@@ -253,7 +253,7 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     widget.onAddPlan(
       StudyPlan(
         id: 'plan_${now.microsecondsSinceEpoch}',
-        domainId: widget.domain.id,
+        categoryId: widget.category.id,
         depth: PlanDepth.deep,
         conceptId: widget.concept.id,
         degree: degree,
@@ -273,7 +273,7 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
     final variant = _variant;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.domain.displayNameFor(widget.band)),
+        title: Text(widget.category.displayNameFor(widget.band)),
         bottom: TabBar(
           controller: _tabs,
           labelColor: paperOchre,
@@ -325,8 +325,8 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             GlyphBadge(
-              glyph: variant.glyph ?? widget.domain.glyph,
-              color: widget.domain.color,
+              glyph: variant.glyph ?? widget.category.glyph,
+              color: widget.category.color,
               size: 56,
               rounded: true,
               fontSize: 26,

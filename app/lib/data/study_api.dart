@@ -69,18 +69,9 @@ abstract class StudyApi {
     String question = '',
   });
 
-  /// 在某个分类下创建学习领域；id 留空由服务端生成。
-  Future<Map<String, dynamic>> createDomain({
-    String? id,
-    required String categoryId,
-    required String name,
-    String glyph = '域',
-    String color = '#7A6A54',
-  });
-
-  /// 在某个领域下创建一条知识（概念 + 当前年龄档呈现 + 默认知识点）。
+  /// 在某个分类下创建一条知识（概念 + 当前年龄档呈现 + 默认知识点）。
   Future<Map<String, dynamic>> createKnowledge({
-    required String domainId,
+    required String categoryId,
     required String ageBandId,
     required String topic,
     String? doing,
@@ -227,27 +218,8 @@ class HttpStudyApi implements StudyApi {
   }
 
   @override
-  Future<Map<String, dynamic>> createDomain({
-    String? id,
-    required String categoryId,
-    required String name,
-    String glyph = '域',
-    String color = '#7A6A54',
-  }) async {
-    final map = await _request('POST', '/api/knowledge/domains', body: {
-      if (id != null && id.isNotEmpty) 'id': id,
-      'categoryId': categoryId,
-      'name': name,
-      'glyph': glyph,
-      'color': color,
-    });
-    final domain = map['domain'];
-    return domain is Map ? Map<String, dynamic>.from(domain) : map;
-  }
-
-  @override
   Future<Map<String, dynamic>> createKnowledge({
-    required String domainId,
+    required String categoryId,
     required String ageBandId,
     required String topic,
     String? doing,
@@ -258,7 +230,7 @@ class HttpStudyApi implements StudyApi {
     String? glyph,
   }) async {
     final map = await _request('POST', '/api/knowledge/concepts', body: {
-      'domainId': domainId,
+      'categoryId': categoryId,
       'ageBandId': ageBandId,
       'topic': topic,
       if (doing != null && doing.isNotEmpty) 'doing': doing,

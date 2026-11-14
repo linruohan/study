@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
-import '../knowledge/domain.dart';
 import '../knowledge/knowledge_catalog.dart';
 import '../knowledge/knowledge_graph.dart';
 import '../knowledge/taxonomy.dart';
@@ -11,8 +10,8 @@ import 'theme.dart';
 
 /// 知识库右侧主视图：面包屑、分类信息、子类与知识两组自适应卡片。
 ///
-/// 当前选中的可以是分类（展示子类 + 直属知识），也可以是某个领域
-/// （只展示该领域下的知识），面包屑始终给出完整归属。
+/// 分类树上父类/子类均可嵌套，知识直接挂在分类下：选中一个分类时，
+/// 「子类」列出它的直接子类，「知识」列出它直属的知识。
 class LibraryCategoryPanel extends StatelessWidget {
   const LibraryCategoryPanel({
     super.key,
@@ -20,11 +19,9 @@ class LibraryCategoryPanel extends StatelessWidget {
     required this.band,
     required this.learner,
     required this.active,
-    required this.selectedDomain,
     required this.onSelectCategory,
     required this.onOpen,
     required this.onAddSubtype,
-    required this.onAddDomain,
     required this.onAddKnowledge,
     required this.onEditCategory,
   });
@@ -33,16 +30,12 @@ class LibraryCategoryPanel extends StatelessWidget {
   final AgeBand band;
   final LearnerState learner;
 
-  /// 当前分类；选中领域时是领域所属分类。
+  /// 当前选中的分类。
   final ScholarCategory active;
 
-  /// 当前选中的领域；选中的是分类时为 null。
-  final LearningDomain? selectedDomain;
-
   final ValueChanged<ScholarCategory> onSelectCategory;
-  final void Function(Concept concept, LearningDomain domain) onOpen;
+  final void Function(Concept concept, ScholarCategory category) onOpen;
   final ValueChanged<ScholarCategory> onAddSubtype;
-  final ValueChanged<ScholarCategory> onAddDomain;
   final ValueChanged<ScholarCategory> onAddKnowledge;
 
   /// 修改当前分类的名称与描述。
@@ -66,27 +59,14 @@ class LibraryCategoryPanel extends StatelessWidget {
   /// 当前分类的直接子类。
   List<ScholarCategory> get _children => graph.childrenOf(active.id);
 
-  /// 当前要展示的知识：选中领域时只看该领域，否则看分类直属领域。
-  List<({Concept concept, LearningDomain domain})> get _knowledge {
-    final selected = selectedDomain;
-    if (selected != null) {
-      return [
-        for (final concept in selected.conceptsFor(band))
-          (concept: concept, domain: selected),
-      ];
-    }
-    return [
-      for (final domain in graph.directDomainsInCategory(active, band))
-        for (final concept in domain.conceptsFor(band))
-          (concept: concept, domain: domain),
-    ];
-  }
+  /// 当前分类直属的知识。
+  List<Concept> get _knowledge => active.conceptsFor(band);
 
-  /// 子类及其后代下当前年龄档的知识总数。
+  /// 子类及其后代下的知识总数。
   int _knowledgeCountUnder(ScholarCategory category) {
     return graph
-        .domainsUnderCategory(category)
-        .fold(0, (sum, domain) => sum + domain.conceptsFor(band).length);
+        .categoriesUnder(category)
+        .fold(0, (sum, category) => sum + category.conceptsFor(band).length);
   }
 
   int _groupOf(Concept concept) {
@@ -108,16 +88,13 @@ class LibraryCategoryPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final domain = selectedDomain;
     final lineage = _lineage();
     // 一级分类没有归属可展示，面包屑只放在标题最右侧。
     final showBreadcrumb = lineage.length > 1;
-    final title = domain == null ? active.name : domain.displayNameFor(band);
-    final description = domain == null
-        ? (active.question.isEmpty ? '暂无描述' : active.question)
-        : '所属分类：${active.name}'
-            '${active.question.isEmpty ? '' : ' · ${active.question}'}';
-    final descriptionStyle = domain == null && active.question.isEmpty
+    final title = active.displayNameFor(band);
+    final description =
+        active.question.isEmpty ? '暂无描述' : active.question;
+    final descriptionStyle = active.question.isEmpty
         ? text.bodySmall?.copyWith(color: paperInkSoft)
         : text.bodySmall;
 
@@ -173,43 +150,39 @@ class LibraryCategoryPanel extends StatelessWidget {
               builder: (context, constraints) {
                 final columns = _columnsFor(constraints.maxWidth - 36);
                 return SingleChildScrollView(
-                  key: PageStorageKey('library_detail_${active.id}_${selectionKey()}'),
+                  key: PageStorageKey('library_detail_${active.id}'),
                   padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (domain == null) ...[
-                        _SectionGrid(
-                          key: const ValueKey('section_children'),
-                          title: '子类',
-                          count: _children.length,
-                          columns: columns,
-                          tiles: [
-                            for (final category in _children)
-                              _childTile(context, category),
-                          ],
-                          emptyHint: _emptyHint(text, '这个分类下还没有子类。'),
-                          addKey: const Key('section_add_subtype'),
-                          addTooltip: '添加子类',
-                          onAdd: () => onAddSubtype(active),
-                          sortKey: const Key('section_sort_subtype'),
-                        ),
-                        const SizedBox(height: 22),
-                      ],
+                      _SectionGrid(
+                        key: const ValueKey('section_children'),
+                        title: '子类',
+                        count: _children.length,
+                        columns: columns,
+                        tiles: [
+                          for (final category in _children)
+                            _childTile(context, category),
+                        ],
+                        emptyHint: _emptyHint(text, '这个分类下还没有子类。'),
+                        addKey: const Key('section_add_subtype'),
+                        addTooltip: '添加子类',
+                        onAdd: () => onAddSubtype(active),
+                        sortKey: const Key('section_sort_subtype'),
+                      ),
+                      const SizedBox(height: 22),
                       _SectionGrid(
                         key: const ValueKey('section_knowledge'),
                         title: '知识',
                         count: _knowledge.length,
                         columns: columns,
                         tiles: [
-                          for (final row in _knowledge)
-                            _knowledgeTile(context, row.concept, row.domain),
+                          for (final concept in _knowledge)
+                            _knowledgeTile(context, concept),
                         ],
                         emptyHint: _emptyHint(
                           text,
-                          domain == null
-                              ? '这一类还没有直属知识，可在此分类或子类下添加。'
-                              : '这个领域下还没有当前年龄档的知识。',
+                          '这个分类还没有直属知识，可在此分类或子类下添加。',
                         ),
                         addKey: const Key('section_add_knowledge'),
                         addTooltip: '添加知识',
@@ -227,13 +200,9 @@ class LibraryCategoryPanel extends StatelessWidget {
     );
   }
 
-  /// 每个选中节点独立记忆滚动位置。
-  String selectionKey() => selectedDomain?.id ?? active.id;
-
-  /// 面包屑：祖先分类都可点击，最后一段显示当前分类或领域。
+  /// 面包屑：祖先分类都可点击，最后一段显示当前分类。
   Widget _breadcrumb(BuildContext context, List<ScholarCategory> lineage) {
     final text = Theme.of(context).textTheme;
-    final domain = selectedDomain;
     return Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: 2,
@@ -257,65 +226,34 @@ class LibraryCategoryPanel extends StatelessWidget {
             ),
           ),
         ],
-        if (domain != null) ...[
-          const Icon(Icons.chevron_right, size: 14, color: paperInkSoft),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: Text(
-              domain.displayNameFor(band),
-              style: text.bodySmall?.copyWith(color: paperInk),
-            ),
-          ),
-        ],
       ],
     );
   }
 
-  /// 添加子类型 / 领域 / 知识，以及修改分类信息；只用图标，悬停给提示。
+  /// 添加子类型 / 知识，以及修改分类信息；只用图标，悬停给提示。
   Widget _actions(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _iconAction(
+        _compactIconButton(
           key: const Key('library_add_subtype'),
           icon: Icons.account_tree_outlined,
-          tooltip: '添加子类型',
+          tooltip: '添加子类',
           onPressed: () => onAddSubtype(active),
         ),
-        _iconAction(
-          key: const Key('library_add_domain'),
-          icon: Icons.workspaces_outline,
-          tooltip: '添加领域',
-          onPressed: () => onAddDomain(active),
-        ),
-        _iconAction(
+        _compactIconButton(
           key: const Key('library_add_knowledge'),
           icon: Icons.menu_book_outlined,
           tooltip: '添加知识',
           onPressed: () => onAddKnowledge(active),
         ),
-        _iconAction(
+        _compactIconButton(
           key: const Key('library_edit_category'),
           icon: Icons.edit_outlined,
           tooltip: '修改分类信息',
           onPressed: () => onEditCategory(active),
         ),
       ],
-    );
-  }
-
-  /// 一个紧凑的图标按钮，说明放进 Tooltip。
-  Widget _iconAction({
-    required Key key,
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onPressed,
-  }) {
-    return _compactIconButton(
-      key: key,
-      icon: icon,
-      tooltip: tooltip,
-      onPressed: onPressed,
     );
   }
 
@@ -340,14 +278,14 @@ class LibraryCategoryPanel extends StatelessWidget {
       key: Key('category_card_${category.id}'),
       glyph: category.glyph,
       color: category.color,
-      label: category.name,
+      label: category.displayNameFor(band),
       caption: '${_knowledgeCountUnder(category)} 条知识',
       onTap: () => onSelectCategory(category),
     );
   }
 
   /// 一条知识卡片：图标沿用知识符号，副标题给学习状态。
-  Widget _knowledgeTile(BuildContext context, Concept concept, LearningDomain domain) {
+  Widget _knowledgeTile(BuildContext context, Concept concept) {
     final variant = concept.variantFor(band);
     final tier = learner.tierOf(concept.id);
     final locked = tier == null && !graph.unlocked(concept, learner.readyIds, band);
@@ -358,12 +296,12 @@ class LibraryCategoryPanel extends StatelessWidget {
     final creator = _creatorOf(concept);
     return _AppTile(
       key: Key('knowledge_${concept.id}'),
-      glyph: variant.glyph ?? domain.glyph,
-      color: domain.color,
+      glyph: variant.glyph ?? active.glyph,
+      color: active.color,
       label: variant.topic,
       caption: creator.isEmpty ? statusLabel : '$statusLabel · 智者 $creator',
       locked: locked,
-      onTap: () => onOpen(concept, domain),
+      onTap: () => onOpen(concept, active),
     );
   }
 }
