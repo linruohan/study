@@ -2,13 +2,13 @@
 export interface ProfileDto {
   /// 当前年龄档 id；还没选时为空。
   band: string | null;
-  /// 关注领域 id，可空。
-  focusDomainId: string | null;
+  /// 关注分类 id，可空。
+  focusCategoryId: string | null;
 }
 
 export interface PlanDto {
   id: string;
-  domainId: string;
+  categoryId: string;
   depth: 'brief' | 'deep';
   conceptId: string | null;
   degree: string | null;
@@ -26,7 +26,7 @@ export interface LearningRecordDto {
   subject: string;
   body: string;
   conceptId: string | null;
-  domainId: string | null;
+  categoryId: string | null;
   ageBandId: string | null;
 }
 

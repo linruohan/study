@@ -145,6 +145,6 @@ test('routes: health, auth, write permission, degree, device data', { timeout: 6
   const get = await http.inject({ method: 'GET', url: `/api/devices/${deviceId}/data` });
   assert.equal(get.statusCode, 200);
   assert.equal(get.json().plans.length, 1);
-  assert.equal(get.json().plans[0].domainId, 'language');
+  assert.equal(get.json().plans[0].categoryId, 'language');
   assert.equal(get.json().profile.band, 'toddler');
 });

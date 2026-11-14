@@ -5,13 +5,13 @@ import type { PlanDto, UserDataDto } from './me.types.js';
 /// 设置行。
 interface ProfileRow {
   age_band_id: string | null;
-  focus_domain_id: string | null;
+  focus_category_id: string | null;
 }
 
 /// 计划行。
 interface PlanRow {
   id: string;
-  domain_id: string;
+  category_id: string;
   depth: 'brief' | 'deep';
   concept_id: string | null;
   degree_id: string | null;
@@ -30,7 +30,7 @@ interface RecordRow {
   subject: string;
   body: string;
   concept_id: string | null;
-  domain_id: string | null;
+  category_id: string | null;
   age_band_id: string | null;
 }
 
@@ -50,11 +50,11 @@ export async function loadUserData(deviceId: string): Promise<UserDataDto> {
 
   const [profileResult, plansResult, recordsResult] = await Promise.all([
     pool.query<ProfileRow>(
-      'SELECT age_band_id, focus_domain_id FROM study_profiles WHERE device_id = $1',
+      'SELECT age_band_id, focus_category_id FROM study_profiles WHERE device_id = $1',
       [deviceId],
     ),
     pool.query<PlanRow>(
-      `SELECT id, domain_id, depth, concept_id, degree_id, start_at,
+      `SELECT id, category_id, depth, concept_id, degree_id, start_at,
               remind, done, reminded_at, snoozed_until
          FROM study_plans
         WHERE device_id = $1
@@ -62,7 +62,7 @@ export async function loadUserData(deviceId: string): Promise<UserDataDto> {
       [deviceId],
     ),
     pool.query<RecordRow>(
-      `SELECT id, at, source, subject, body, concept_id, domain_id, age_band_id
+      `SELECT id, at, source, subject, body, concept_id, category_id, age_band_id
          FROM learning_records
         WHERE device_id = $1
         ORDER BY at`,
@@ -74,7 +74,7 @@ export async function loadUserData(deviceId: string): Promise<UserDataDto> {
   return {
     profile: {
       band: profile?.age_band_id ?? null,
-      focusDomainId: profile?.focus_domain_id ?? null,
+      focusCategoryId: profile?.focus_category_id ?? null,
     },
     plans: plansResult.rows.map(toPlanDto),
     records: recordsResult.rows.map(toRecordDto),
@@ -122,25 +122,25 @@ export async function saveUserData(
     );
 
     await client.query(
-      `INSERT INTO study_profiles (device_id, age_band_id, focus_domain_id)
+      `INSERT INTO study_profiles (device_id, age_band_id, focus_category_id)
        VALUES ($1, $2, $3)
        ON CONFLICT (device_id) DO UPDATE SET
          age_band_id = EXCLUDED.age_band_id,
-         focus_domain_id = EXCLUDED.focus_domain_id`,
-      [deviceId, data.profile.band, data.profile.focusDomainId],
+         focus_category_id = EXCLUDED.focus_category_id`,
+      [deviceId, data.profile.band, data.profile.focusCategoryId],
     );
 
     await client.query('DELETE FROM study_plans WHERE device_id = $1', [deviceId]);
     await insertBatches(
       client,
       `INSERT INTO study_plans
-         (device_id, id, domain_id, depth, concept_id, degree_id, start_at,
+         (device_id, id, category_id, depth, concept_id, degree_id, start_at,
           remind, done, reminded_at, snoozed_until)`,
       11,
       data.plans.map((plan) => [
         deviceId,
         plan.id,
-        plan.domainId,
+        plan.categoryId,
         plan.depth,
         plan.conceptId,
         plan.degree,
@@ -158,7 +158,7 @@ export async function saveUserData(
     await insertBatches(
       client,
       `INSERT INTO learning_records
-         (device_id, id, at, source, subject, body, concept_id, domain_id, age_band_id)`,
+         (device_id, id, at, source, subject, body, concept_id, category_id, age_band_id)`,
       9,
       data.records.map((record) => [
         deviceId,
@@ -168,7 +168,7 @@ export async function saveUserData(
         record.subject,
         record.body,
         record.conceptId,
-        record.domainId,
+        record.categoryId,
         record.ageBandId,
       ]),
     );
@@ -193,7 +193,7 @@ export async function saveUserData(
 function toPlanDto(row: PlanRow): PlanDto {
   return {
     id: row.id,
-    domainId: row.domain_id,
+    categoryId: row.category_id,
     depth: row.depth,
     conceptId: row.concept_id,
     degree: row.degree_id,
@@ -214,7 +214,7 @@ function toRecordDto(row: RecordRow): UserDataDto['records'][number] {
     subject: row.subject,
     body: row.body,
     conceptId: row.concept_id,
-    domainId: row.domain_id,
+    categoryId: row.category_id,
     ageBandId: row.age_band_id,
   };
 }

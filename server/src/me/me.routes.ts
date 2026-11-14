@@ -12,13 +12,13 @@ const deviceParamsSchema = z.object({
 const profileSchema = z
   .object({
     band: z.string().trim().min(1).nullable().optional(),
-    // 016 后字段统一为「分类」：新客户端发 focusCategoryId，旧数据仍允许 focusDomainId。
+    // 旧客户端/旧缓存可能还发 focusDomainId；统一落到 focusCategoryId。
     focusDomainId: z.string().trim().min(1).nullable().optional(),
     focusCategoryId: z.string().trim().min(1).nullable().optional(),
   })
   .transform((value) => ({
     band: value.band ?? null,
-    focusDomainId: value.focusCategoryId ?? value.focusDomainId ?? null,
+    focusCategoryId: value.focusCategoryId ?? value.focusDomainId ?? null,
   }));
 
 const planSchema = z
@@ -42,7 +42,7 @@ const planSchema = z
   })
   .transform((value) => ({
     id: value.id,
-    domainId: (value.categoryId ?? value.domainId) as string,
+    categoryId: (value.categoryId ?? value.domainId) as string,
     depth: value.depth,
     conceptId: value.conceptId ?? null,
     degree: value.degree ?? null,
@@ -61,7 +61,9 @@ const recordSchema = z
     subject: z.string().trim().min(1).max(200),
     body: z.string().trim().min(1).max(5_000),
     conceptId: z.string().trim().min(1).nullable().optional(),
+    // 旧客户端/旧缓存可能还发 domainId；统一落到 categoryId。
     domainId: z.string().trim().min(1).nullable().optional(),
+    categoryId: z.string().trim().min(1).nullable().optional(),
     ageBandId: z.string().trim().min(1).nullable().optional(),
   })
   .transform((value) => ({
@@ -71,12 +73,12 @@ const recordSchema = z
     subject: value.subject,
     body: value.body,
     conceptId: value.conceptId ?? null,
-    domainId: value.domainId ?? null,
+    categoryId: value.categoryId ?? value.domainId ?? null,
     ageBandId: value.ageBandId ?? null,
   }));
 
 const userDataSchema = z.object({
-  profile: profileSchema.default({ band: null, focusDomainId: null, focusCategoryId: null }),
+  profile: profileSchema.default({ band: null, focusCategoryId: null }),
   plans: z.array(planSchema).max(500).default([]),
   records: z.array(recordSchema).max(5_000).default([]),
 });
