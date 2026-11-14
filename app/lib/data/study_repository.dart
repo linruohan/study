@@ -357,10 +357,21 @@ class StudyRepository {
     await _push();
   }
 
+  /// 推送队列：串行化推送，避免两次修改并发时旧快照覆盖新数据。
+  Future<void> _pushQueue = Future.value();
+
   /// 写缓存并同步服务端；写库成功后回读一次，内存以数据库为准。
   ///
   /// 同步失败只标记待推送，不打断界面，下次加载时会再试。
-  Future<void> _push() async {
+  /// 多次调用会排队执行，且每次执行时重建载荷，保证最后一次包含全部最新状态。
+  Future<void> _push() {
+    final done = _pushQueue.then((_) => _doPush());
+    // 队列吞掉单次失败（_doPush 内部已标记 pending），不让后续推送被卡住。
+    _pushQueue = done.catchError((_) {});
+    return done;
+  }
+
+  Future<void> _doPush() async {
     final knowledge = _knowledgeJson;
     final deviceId = _deviceId;
     if (knowledge == null || deviceId == null) {

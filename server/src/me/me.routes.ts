@@ -12,17 +12,21 @@ const deviceParamsSchema = z.object({
 const profileSchema = z
   .object({
     band: z.string().trim().min(1).nullable().optional(),
+    // 016 后字段统一为「分类」：新客户端发 focusCategoryId，旧数据仍允许 focusDomainId。
     focusDomainId: z.string().trim().min(1).nullable().optional(),
+    focusCategoryId: z.string().trim().min(1).nullable().optional(),
   })
   .transform((value) => ({
     band: value.band ?? null,
-    focusDomainId: value.focusDomainId ?? null,
+    focusDomainId: value.focusCategoryId ?? value.focusDomainId ?? null,
   }));
 
 const planSchema = z
   .object({
     id: z.string().trim().min(1).max(100),
-    domainId: z.string().trim().min(1),
+    // 计划归属分类：新客户端发 categoryId，旧数据仍允许 domainId。
+    domainId: z.string().trim().min(1).nullable().optional(),
+    categoryId: z.string().trim().min(1).nullable().optional(),
     depth: z.enum(['brief', 'deep']),
     conceptId: z.string().trim().min(1).nullable().optional(),
     degree: z.string().trim().min(1).nullable().optional(),
@@ -32,9 +36,13 @@ const planSchema = z
     remindedAt: z.coerce.date().nullable().optional(),
     snoozedUntil: z.coerce.date().nullable().optional(),
   })
+  .refine((value) => (value.categoryId ?? value.domainId) != null, {
+    message: 'categoryId 不能为空',
+    path: ['categoryId'],
+  })
   .transform((value) => ({
     id: value.id,
-    domainId: value.domainId,
+    domainId: (value.categoryId ?? value.domainId) as string,
     depth: value.depth,
     conceptId: value.conceptId ?? null,
     degree: value.degree ?? null,
@@ -68,7 +76,7 @@ const recordSchema = z
   }));
 
 const userDataSchema = z.object({
-  profile: profileSchema.default({ band: null, focusDomainId: null }),
+  profile: profileSchema.default({ band: null, focusDomainId: null, focusCategoryId: null }),
   plans: z.array(planSchema).max(2000).default([]),
   records: z.array(recordSchema).max(50_000).default([]),
 });
