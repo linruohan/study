@@ -13,6 +13,20 @@ import 'package:study_app/main.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
+  /// 窄屏(Android 有系统内边距)下 ListView 懒加载,目标卡片可能没进组件树;
+  /// 在当前页面的列表上逐步上滑,直到目标可见;已可见时直接返回。
+  Future<void> scrollTo(WidgetTester tester, Finder finder) async {
+    for (var i = 0; i < 24 && finder.evaluate().isEmpty; i++) {
+      final lists = find.byType(ListView);
+      if (lists.evaluate().isEmpty) {
+        return;
+      }
+      // 取组件树里最后一个 ListView:推入的路由(当前页)排在后面。
+      await tester.drag(lists.last, const Offset(0, -220));
+      await tester.pumpAndSettle();
+    }
+  }
+
   testWidgets('选年龄、今日一步、加入计划、记录练习并在重启后读回', (tester) async {
     tester.view.physicalSize = const Size(900, 1600);
     tester.view.devicePixelRatio = 1.0;
@@ -49,25 +63,34 @@ void main() {
     await tester.tap(find.byIcon(Icons.school_outlined));
     await tester.pumpAndSettle();
     expect(find.text('今日一步'), findsOneWidget);
+    await scrollTo(tester, find.text('认一认「日」'));
     expect(find.text('认一认「日」'), findsOneWidget);
 
+    await scrollTo(tester, find.byKey(const Key('zi_ri')));
     await tester.tap(find.byKey(const Key('zi_ri')));
     await tester.pumpAndSettle();
+    await scrollTo(tester, find.byKey(const Key('touch_zi_ri')));
     await tester.tap(find.byKey(const Key('touch_zi_ri')));
     await tester.pumpAndSettle();
+    await scrollTo(tester, find.text('你能指出太阳是「日」'));
     expect(find.text('你能指出太阳是「日」'), findsOneWidget);
 
+    await scrollTo(tester, find.text('回到学习'));
     await tester.tap(find.text('回到学习'));
     await tester.pumpAndSettle();
+    await scrollTo(tester, find.text('本机记录 1 条'));
     expect(find.text('本机记录 1 条'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.menu_book_outlined));
     await tester.pumpAndSettle();
     // 020 后「语言文字」是教养之学下的子类：先展开父类，再进入子类。
+    await scrollTo(tester, find.byKey(const Key('tree_expand_education')));
     await tester.tap(find.byKey(const Key('tree_expand_education')));
     await tester.pumpAndSettle();
+    await scrollTo(tester, find.byKey(const Key('tree_category_tile_language')));
     await tester.tap(find.byKey(const Key('tree_category_tile_language')));
     await tester.pumpAndSettle();
+    await scrollTo(tester, find.byKey(const Key('knowledge_zi_ri')));
     await tester.tap(find.byKey(const Key('knowledge_zi_ri')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('add_to_plan')));
@@ -159,13 +182,17 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.school_outlined));
     await tester.pumpAndSettle();
+    await scrollTo(tester, find.byKey(const Key('zi_ri')));
     await tester.tap(find.byKey(const Key('zi_ri')));
     await tester.pumpAndSettle();
+    await scrollTo(tester, find.byKey(const Key('touch_zi_ri')));
     await tester.tap(find.byKey(const Key('touch_zi_ri')));
     await tester.pumpAndSettle();
+    await scrollTo(tester, find.text('回到学习'));
     await tester.tap(find.text('回到学习'));
     await tester.pumpAndSettle();
 
+    await scrollTo(tester, find.text('本机记录 1 条'));
     expect(find.text('本机记录 1 条'), findsOneWidget);
     expect(offline.archive.records.single.conceptId, 'zi_ri');
     expect(offline.pending, isTrue);

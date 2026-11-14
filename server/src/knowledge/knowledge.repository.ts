@@ -37,6 +37,7 @@ interface CategoryRow {
   modern: string;
   glyph: string;
   color: string;
+  sort_order: number;
 }
 
 /// 概念行。
@@ -118,13 +119,13 @@ export async function loadKnowledgeBundle(): Promise<KnowledgeBundle> {
   let categoriesResult;
   try {
     categoriesResult = await pool.query<CategoryRow>(
-      `SELECT id, parent_id, name, question, ancient, modern, glyph, color
+      `SELECT id, parent_id, name, question, ancient, modern, glyph, color, sort_order
          FROM knowledge_categories
         ORDER BY sort_order`,
     );
   } catch {
     categoriesResult = await pool.query<any>(
-      `SELECT id, name, question, ancient, modern, glyph, color
+      `SELECT id, parent_id, name, question, ancient, modern, glyph, color
          FROM knowledge_categories
         ORDER BY sort_order`,
     );
@@ -155,8 +156,50 @@ export async function loadKnowledgeBundle(): Promise<KnowledgeBundle> {
     concepts: [],
   }));
 
+  // 分类按层级序重排:九类在前(按 sort_order),子类紧跟各自父类(也按 sort_order)。
+  // 全局 sort_order 会让 020 的子分类与九类交错,打乱客户端「今日一步」与遍历顺序。
+  const dtoById = new Map(categories.map((category) => [category.id, category]));
+  const childRows = new Map<string, CategoryRow[]>();
+  const rootRows: CategoryRow[] = [];
+  for (const row of categoriesResult.rows) {
+    if (row.parent_id == null) {
+      rootRows.push(row);
+    } else {
+      const list = childRows.get(row.parent_id) ?? [];
+      list.push(row);
+      childRows.set(row.parent_id, list);
+    }
+  }
+  const bySortOrder = (a: CategoryRow, b: CategoryRow) =>
+    (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  const orderedCategories: CategoryDto[] = [];
+  const pushTree = (rows: CategoryRow[]) => {
+    for (const row of [...rows].sort(bySortOrder)) {
+      const dto = dtoById.get(row.id);
+      if (!dto || orderedCategories.includes(dto)) {
+        continue;
+      }
+      orderedCategories.push(dto);
+      const children = childRows.get(row.id);
+      if (children) {
+        pushTree(children);
+      }
+    }
+  };
+  pushTree(rootRows);
+  // 兼容:父级不在结果里的异常分类(如 016 前的旧库)追加在末尾,避免丢数据。
+  for (const category of categories) {
+    if (!orderedCategories.includes(category)) {
+      orderedCategories.push(category);
+    }
+  }
+  categories.length = 0;
+  categories.push(...orderedCategories);
+
   // 两处都按 id 建索引，后面按行挂载，避免循环里反复查找。
-  const categoryById = new Map(categories.map((category) => [category.id, category]));
+  const categoryById = new Map(
+    categories.map((category) => [category.id, category] as const),
+  );
   const conceptById = new Map<string, ConceptDto>();
 
   for (const row of conceptsResult.rows) {
