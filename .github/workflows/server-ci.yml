@@ -1,0 +1,59 @@
+name: server-ci
+
+on:
+  push:
+    branches: [main]
+    paths: ['server/**', '.github/workflows/server-ci.yml']
+  pull_request:
+    paths: ['server/**', '.github/workflows/server-ci.yml']
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    services:
+      # 用真实 PostgreSQL 跑全量迁移，验证 001–019 能从零建库。
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: study
+          POSTGRES_USER: study
+          POSTGRES_PASSWORD: study_dev_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U study -d study"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgres://study:study_dev_password@localhost:5432/study
+      # 迁移脚本启动会校验 S3 配置；CI 只验数据库迁移，对象存储给占位值即可。
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: ci
+      S3_SECRET_KEY: ci-secret
+      S3_BUCKET: study-assets
+
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 安装依赖
+        run: npm install
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: 从零执行全部数据库迁移
+        run: npm run db:migrate
+
+      - name: 单元测试
+        run: npm test
