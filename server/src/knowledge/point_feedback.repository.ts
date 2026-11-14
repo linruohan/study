@@ -55,7 +55,7 @@ async function touchDevice(
 async function assertPointExists(ref: PointRef): Promise<void> {
   const result = await pool.query(
     `SELECT 1 FROM knowledge_variant_points
-      WHERE concept_id = $1 AND age_band_id = $2 AND degree_id = $3 AND point_position = $4`,
+      WHERE concept_id = $1 AND age_band_id = $2 AND degree_id = $3 AND position = $4`,
     [ref.conceptId, ref.ageBandId, ref.degreeId, ref.position],
   );
   if (result.rowCount === 0) {
