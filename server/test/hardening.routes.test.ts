@@ -46,6 +46,9 @@ test('hardening: assets auth, sage contribution, review, guards, bundle etag', {
 
   const createdAssetIds: string[] = [];
   const createdCategoryIds: string[] = [];
+  // 智者贡献创建的知识概念 id；收尾时精确清掉，避免污染其他测试的今日一步。
+  let sageConceptId: string | null = null;
+  const sageDeviceId = 'aaaaaaaa-1111-2222-3333-444444444444';
   const adminToken = await login(http, ADMIN);
   const userToken = await login(http, USER);
 
@@ -56,6 +59,15 @@ test('hardening: assets auth, sage contribution, review, guards, bundle etag', {
     }
     for (const id of createdCategoryIds) {
       await pool.query('DELETE FROM knowledge_categories WHERE id = $1', [id]);
+    }
+    if (sageConceptId) {
+      // 贡献（含积分）→ 知识点 → 分龄呈现 → 概念，按外键依赖从下游往上删。
+      await pool.query('DELETE FROM knowledge_point_credits WHERE correction_id IN (SELECT id FROM knowledge_point_corrections WHERE device_id = $1)', [sageDeviceId]);
+      await pool.query('DELETE FROM knowledge_point_corrections WHERE device_id = $1', [sageDeviceId]);
+      await pool.query('DELETE FROM knowledge_contributions WHERE concept_id = $1', [sageConceptId]);
+      await pool.query('DELETE FROM knowledge_variant_points WHERE concept_id = $1', [sageConceptId]);
+      await pool.query('DELETE FROM knowledge_variants WHERE concept_id = $1', [sageConceptId]);
+      await pool.query('DELETE FROM knowledge_concepts WHERE id = $1', [sageConceptId]);
     }
     await pool.query('DELETE FROM degree_applications WHERE user_id = $1', [adminId]);
     await pool.query("DELETE FROM users WHERE username IN ('hd-admin', 'hd-user')");
@@ -183,10 +195,11 @@ test('hardening: assets auth, sage contribution, review, guards, bundle etag', {
     },
   });
   assert.equal(contribution.statusCode, 200, contribution.body);
+  sageConceptId = (contribution.json().contribution.conceptId as string) ?? null;
 
   const unknownDomain = await http.inject({
     method: 'POST',
-    url: `/api/devices/${deviceId}/sage/contributions`,
+    url: `/api/devices/${sageDeviceId}/sage/contributions`,
     payload: {
       kind: 'knowledge',
       domainId: 'no_such_domain',

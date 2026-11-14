@@ -15,6 +15,7 @@ import 'theme.dart';
 class LibraryCategoryPanel extends StatelessWidget {
   const LibraryCategoryPanel({
     super.key,
+    required this.catalog,
     required this.graph,
     required this.band,
     required this.learner,
@@ -26,6 +27,8 @@ class LibraryCategoryPanel extends StatelessWidget {
     required this.onEditCategory,
   });
 
+  /// 知识目录：智者署名来自这里，不再依赖全局单例。
+  final KnowledgeCatalog catalog;
   final KnowledgeGraph graph;
   final AgeBand band;
   final LearnerState learner;
@@ -78,10 +81,6 @@ class LibraryCategoryPanel extends StatelessWidget {
   }
 
   String _creatorOf(Concept concept) {
-    final catalog = KnowledgeCatalog.maybeInstance;
-    if (catalog == null) {
-      return '';
-    }
     return catalog.sageCredits.creatorOfConcept(concept.id);
   }
 

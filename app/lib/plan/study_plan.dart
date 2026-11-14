@@ -131,7 +131,10 @@ class StudyPlan {
   }
 
   /// 读取一条计划；字段缺失或损坏时返回 null，让坏数据被跳过。
-  static StudyPlan? fromJson(Map<String, Object?> json) {
+  ///
+  /// 程度 id 要靠知识目录解析成对象，目录由调用方显式传入（加载顺序上
+  /// 目录一定先于设备数据就绪）。
+  static StudyPlan? fromJson(Map<String, Object?> json, KnowledgeCatalog catalog) {
     final id = json['id'];
     // 旧数据里的键叫 domainId，值（分类 id）迁移后不变。
     final categoryId =
@@ -148,9 +151,7 @@ class StudyPlan {
       categoryId: categoryId,
       depth: depth,
       conceptId: json['conceptId'] as String?,
-      degree: KnowledgeCatalog.maybeInstance?.degreeById(
-        json['degree'] as String?,
-      ),
+      degree: catalog.degreeById(json['degree'] as String?),
       startAt: startAt,
       remind: json['remind'] as bool? ?? true,
       done: json['done'] as bool? ?? false,

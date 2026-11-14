@@ -21,21 +21,32 @@ Map<String, dynamic> loadKnowledgeJson() {
   return Map<String, dynamic>.from(decoded as Map);
 }
 
+/// 测试知识目录：installTestCatalog 装好后，testBand/testDegree 从这里查。
+KnowledgeCatalog? _testCatalog;
+
 /// 安装测试知识目录，并返回它。
 KnowledgeCatalog installTestCatalog() {
   final catalog = KnowledgeCatalog.fromJson(loadKnowledgeJson());
-  catalog.install();
+  _testCatalog = catalog;
   return catalog;
 }
 
 /// 按 id 取测试年龄档。
 AgeBand testBand(String id) {
-  return KnowledgeCatalog.instance.ageBandById(id)!;
+  final catalog = _testCatalog;
+  if (catalog == null) {
+    throw StateError('先调用 installTestCatalog()');
+  }
+  return catalog.ageBandById(id)!;
 }
 
 /// 按 id 取测试学习程度。
 StudyDegree testDegree(String id) {
-  return KnowledgeCatalog.instance.degreeById(id)!;
+  final catalog = _testCatalog;
+  if (catalog == null) {
+    throw StateError('先调用 installTestCatalog()');
+  }
+  return catalog.degreeById(id)!;
 }
 
 /// 假接口：知识来自夹具，用户数据存在内存里。
@@ -553,6 +564,8 @@ class TestStudy {
       device: MemoryDeviceIdStore(),
     );
     await repository.load();
+    // 单例已移除：fixture 自己记住目录，testBand/testDegree 从这里查。
+    _testCatalog = repository.catalog;
     return TestStudy._(dir, fake, repository, memoryCache);
   }
 

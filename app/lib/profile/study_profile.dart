@@ -28,10 +28,11 @@ class StudyProfile {
   }
 
   /// 从接口或缓存读取设置；未知年龄 id 回到「还没选」。
-  static StudyProfile fromJson(Map<String, Object?> json) {
-    final catalog = KnowledgeCatalog.maybeInstance;
+  ///
+  /// 目录由调用方显式传入（加载顺序上目录一定先于设备数据就绪）。
+  static StudyProfile fromJson(Map<String, Object?> json, KnowledgeCatalog catalog) {
     return StudyProfile(
-      band: catalog?.ageBandById(json['band'] as String?),
+      band: catalog.ageBandById(json['band'] as String?),
       // 旧数据里的键叫 focusDomainId。
       focusCategoryId:
           (json['focusCategoryId'] ?? json['focusDomainId']) as String?,

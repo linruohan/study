@@ -471,6 +471,7 @@ class _HomePageState extends State<HomePage> {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (routeContext) => AgeSetupPage(
+          catalog: widget.repository.catalog,
           store: widget.store,
           onChosen: (band) {
             Navigator.of(routeContext).pop();
@@ -698,6 +699,7 @@ class _HomePageState extends State<HomePage> {
   Widget _currentView(AgeBand band, LearnerState learner) {
     return switch (_tab) {
       1 => LibraryView(
+          catalog: widget.repository.catalog,
           graph: _graph,
           band: band,
           learner: learner,
@@ -795,6 +797,7 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(width: 12),
             Expanded(
               child: KnowledgeSearchBar(
+                catalog: widget.repository.catalog,
                 graph: _graph,
                 band: band,
                 onOpen: _openKnowledge,

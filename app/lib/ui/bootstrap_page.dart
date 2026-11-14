@@ -114,7 +114,11 @@ class _StartPageState extends State<StartPage> {
 
     final profile = snapshot.profile;
     if (profile.band == null) {
-      return AgeSetupPage(store: _store, onChosen: _onChosen);
+      return AgeSetupPage(
+        catalog: snapshot.catalog,
+        store: _store,
+        onChosen: _onChosen,
+      );
     }
     return HomePage(
       archive: _archive,

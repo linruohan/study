@@ -14,11 +14,14 @@ import 'glyph_badge.dart';
 class KnowledgeSearchBar extends StatefulWidget {
   const KnowledgeSearchBar({
     super.key,
+    required this.catalog,
     required this.graph,
     required this.band,
     required this.onOpen,
   });
 
+  /// 知识目录：学习程度清单来自这里，不再依赖全局单例。
+  final KnowledgeCatalog catalog;
   final KnowledgeGraph graph;
   final AgeBand band;
 
@@ -46,7 +49,7 @@ class _KnowledgeSearchBarState extends State<KnowledgeSearchBar> {
     if (query.isEmpty) {
       return const [];
     }
-    final degrees = KnowledgeCatalog.instance.degrees;
+    final degrees = widget.catalog.degrees;
     final hits = <_KnowledgeHit>[];
     for (final category in widget.graph.categories) {
       if (!category.concepts.any((concept) => concept.availableIn(widget.band))) {

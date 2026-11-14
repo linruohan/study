@@ -7,6 +7,7 @@ import 'taxonomy.dart';
 /// 知识库目录：一次加载后供全应用查询。
 ///
 /// 所有内容来自服务端接口或本地缓存，客户端不再内置知识数据。
+/// 目录由仓库持有并显式传递，不再有全局单例。
 class KnowledgeCatalog {
   KnowledgeCatalog._({
     required this.ageBands,
@@ -15,20 +16,6 @@ class KnowledgeCatalog {
     required this.graph,
     required this.sageCredits,
   });
-
-  static KnowledgeCatalog? _instance;
-
-  /// 已安装的目录；还没加载完就访问会报错，启动页会先完成加载。
-  static KnowledgeCatalog get instance {
-    final value = _instance;
-    if (value == null) {
-      throw StateError('知识库还没有加载');
-    }
-    return value;
-  }
-
-  /// 可能为空的目录，供旧数据解析时容错使用。
-  static KnowledgeCatalog? get maybeInstance => _instance;
 
   final List<AgeBand> ageBands;
   final List<StudyDegree> degrees;
@@ -68,11 +55,6 @@ class KnowledgeCatalog {
             : null,
       ),
     );
-  }
-
-  /// 安装为全局目录，供各页面查询。
-  void install() {
-    _instance = this;
   }
 
   /// 按 id 找年龄档。

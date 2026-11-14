@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
+import '../knowledge/knowledge_catalog.dart';
 import '../knowledge/knowledge_graph.dart';
 import '../knowledge/taxonomy.dart';
 import '../learning/learner_state.dart';
@@ -15,6 +16,7 @@ const _twoPaneMinWidth = 760.0;
 class LibraryView extends StatelessWidget {
   const LibraryView({
     super.key,
+    required this.catalog,
     required this.graph,
     required this.band,
     required this.learner,
@@ -28,6 +30,8 @@ class LibraryView extends StatelessWidget {
     required this.onEditCategory,
   });
 
+  /// 知识目录：透传给右侧分类面板，不再依赖全局单例。
+  final KnowledgeCatalog catalog;
   final KnowledgeGraph graph;
   final AgeBand band;
   final LearnerState learner;
@@ -87,6 +91,7 @@ class LibraryView extends StatelessWidget {
     final active = _activeCategory(roots);
     final entries = _visibleEntries();
     final detail = LibraryCategoryPanel(
+      catalog: catalog,
       graph: graph,
       band: band,
       learner: learner,

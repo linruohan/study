@@ -6,7 +6,6 @@ import '../data/study_repository.dart';
 import '../knowledge/age_band.dart';
 import '../knowledge/concept.dart';
 import '../knowledge/taxonomy.dart';
-import '../knowledge/knowledge_catalog.dart';
 import '../knowledge/knowledge_graph.dart';
 import '../knowledge/study_degree.dart';
 import '../learning/learner_state.dart';
@@ -79,11 +78,8 @@ class _KnowledgeDetailPageState extends State<KnowledgeDetailPage>
   }
 
   String _creatorOfConcept() {
-    final catalog = KnowledgeCatalog.maybeInstance;
-    if (catalog == null) {
-      return '';
-    }
-    return catalog.sageCredits.creatorOfConcept(widget.concept.id);
+    // 目录由仓库持有，智者署名从目录取，不再依赖全局单例。
+    return widget.repository.catalog.sageCredits.creatorOfConcept(widget.concept.id);
   }
 
   /// 写入成功后重新向服务端要一份知识库，用返回的数据刷新当前页面。

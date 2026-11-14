@@ -67,6 +67,9 @@ class PlanView extends StatefulWidget {
 }
 
 class _PlanViewState extends State<PlanView> {
+  /// 知识目录：来自仓库，不再依赖全局单例。
+  KnowledgeCatalog get _catalog => widget.repository.catalog;
+
   /// 左侧选中的分类 id；空时默认选第一个有计划的分类。
   String? _selectedCategoryId;
 
@@ -141,7 +144,7 @@ class _PlanViewState extends State<PlanView> {
           band: widget.band,
           category: category,
           concept: concept,
-          degree: plan.degree ?? KnowledgeCatalog.instance.degrees.first,
+          degree: plan.degree ?? _catalog.degrees.first,
         ),
       ),
     );
@@ -158,7 +161,7 @@ class _PlanViewState extends State<PlanView> {
     );
     showSuccessToast(
       context,
-      '已加入计划 · ${KnowledgeCatalog.instance.degrees.first.label}',
+      '已加入计划 · ${_catalog.degrees.first.label}',
     );
   }
 
@@ -396,7 +399,7 @@ class _PlanViewState extends State<PlanView> {
         continue;
       }
       if (widget.learner.tierOf(concept.id) != null) {
-        learning.add((plan, concept, plan.degree ?? KnowledgeCatalog.instance.degrees.first));
+        learning.add((plan, concept, plan.degree ?? _catalog.degrees.first));
       }
     }
     final notStarted = <(StudyPlan, Concept, StudyDegree)>[];
@@ -406,7 +409,7 @@ class _PlanViewState extends State<PlanView> {
         continue;
       }
       if (widget.learner.tierOf(concept.id) == null) {
-        notStarted.add((plan, concept, plan.degree ?? KnowledgeCatalog.instance.degrees.first));
+        notStarted.add((plan, concept, plan.degree ?? _catalog.degrees.first));
       }
     }
     final unplanned = _unplannedOf(category, plans);

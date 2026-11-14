@@ -127,7 +127,7 @@ class StudyRepository {
       final knowledgeJson = responses[0];
       final userJson = responses[1];
 
-      _catalog = KnowledgeCatalog.fromJson(knowledgeJson)..install();
+      _catalog = KnowledgeCatalog.fromJson(knowledgeJson);
       _knowledgeJson = knowledgeJson;
       _applyUserData(userJson);
       _pending = false;
@@ -142,7 +142,7 @@ class StudyRepository {
       if (cached == null) {
         rethrow;
       }
-      _catalog = KnowledgeCatalog.fromJson(cached.knowledge)..install();
+      _catalog = KnowledgeCatalog.fromJson(cached.knowledge);
       _knowledgeJson = cached.knowledge;
       _applyUserData(cached.userData);
       _pending = cachedPending;
@@ -381,7 +381,7 @@ class StudyRepository {
     final deviceId = await _device.read();
     _deviceId = deviceId;
     final knowledgeJson = await _api.fetchKnowledge();
-    final catalog = KnowledgeCatalog.fromJson(knowledgeJson)..install();
+    final catalog = KnowledgeCatalog.fromJson(knowledgeJson);
     _catalog = catalog;
     _knowledgeJson = knowledgeJson;
     final cached = await _cache.read();
@@ -456,10 +456,16 @@ class StudyRepository {
   }
 
   /// 把接口数据读进内存；坏记录逐条跳过，不让整份数据失败。
+  ///
+  /// 目录在 load() 的两个分支里都已先装好，这里显式传给模型解析。
   void _applyUserData(Map<String, Object?> userJson) {
+    final catalog = _catalog;
+    if (catalog == null) {
+      throw StateError('知识库还没有加载，设备数据没法解析');
+    }
     final rawProfile = userJson['profile'];
     _profile = rawProfile is Map
-        ? StudyProfile.fromJson(Map<String, Object?>.from(rawProfile))
+        ? StudyProfile.fromJson(Map<String, Object?>.from(rawProfile), catalog)
         : const StudyProfile();
 
     final plans = <StudyPlan>[];
@@ -469,7 +475,7 @@ class StudyRepository {
         if (item is! Map) {
           continue;
         }
-        final plan = StudyPlan.fromJson(Map<String, Object?>.from(item));
+        final plan = StudyPlan.fromJson(Map<String, Object?>.from(item), catalog);
         if (plan != null) {
           plans.add(plan);
         }

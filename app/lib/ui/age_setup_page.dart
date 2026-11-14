@@ -14,10 +14,13 @@ import 'widgets/glyph_badge.dart';
 class AgeSetupPage extends StatefulWidget {
   const AgeSetupPage({
     super.key,
+    required this.catalog,
     required this.store,
     required this.onChosen,
   });
 
+  /// 知识目录：年龄档清单来自这里，不再依赖全局单例。
+  final KnowledgeCatalog catalog;
   final ProfileStore store;
   final ValueChanged<AgeBand> onChosen;
 
@@ -61,7 +64,7 @@ class _AgeSetupPageState extends State<AgeSetupPage> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 20),
-            for (final band in KnowledgeCatalog.instance.ageBands) ...[
+            for (final band in widget.catalog.ageBands) ...[
               PaperCard(
                 key: Key('band_${band.id}'),
                 onTap: _busy ? null : () => _choose(band),
